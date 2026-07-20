@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "따라와잉 — 따릉이로 잇는 서울",
     description:
-      "출발지부터 따릉이 대여소, 최적의 반납 대여소, 목적지까지 한 번에 안내하는 서울 자전거 경로 서비스",
+      "출발지부터 가장 가까운 따릉이 대여소, 목적지와 가까운 반납 대여소까지 한 번에 안내하는 서울 자전거 경로 서비스",
     metadataBase: new URL(origin),
     icons: {
       icon: "/favicon.png",

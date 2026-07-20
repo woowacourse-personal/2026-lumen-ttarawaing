@@ -25,6 +25,7 @@ import {
   loadKakaoMapsSdk,
   searchKakaoPlaces,
 } from "./kakao-maps";
+import stationCatalog from "./data/seoul-bike-stations.json";
 import type {
   KakaoMap,
   KakaoMapObject,
@@ -47,8 +48,7 @@ type Station = {
   name: string;
   address: string;
   coordinates: Coordinates;
-  bikes: number;
-  docks: number;
+  bikes: number | null;
 };
 
 type RoutePlan = {
@@ -162,136 +162,13 @@ const PLACES: Place[] = [
   },
 ];
 
-const STATIONS: Station[] = [
-  {
-    id: "ST-101",
-    name: "광화문역 6번출구 옆",
-    address: "세종대로 172 인근",
-    coordinates: [37.57081, 126.97667],
-    bikes: 12,
-    docks: 6,
-  },
-  {
-    id: "ST-102",
-    name: "세종문화회관 앞",
-    address: "세종대로 175 인근",
-    coordinates: [37.57186, 126.97508],
-    bikes: 5,
-    docks: 11,
-  },
-  {
-    id: "ST-103",
-    name: "경복궁역 4번출구 뒤",
-    address: "사직로 130 인근",
-    coordinates: [37.57622, 126.97277],
-    bikes: 8,
-    docks: 4,
-  },
-  {
-    id: "ST-201",
-    name: "서울숲역 2번출구 앞",
-    address: "왕십리로 77 인근",
-    coordinates: [37.54362, 127.04449],
-    bikes: 9,
-    docks: 8,
-  },
-  {
-    id: "ST-202",
-    name: "서울숲 남문 버스정류소",
-    address: "뚝섬로 273 인근",
-    coordinates: [37.54191, 127.03764],
-    bikes: 4,
-    docks: 13,
-  },
-  {
-    id: "ST-203",
-    name: "성수역 3번출구 앞",
-    address: "아차산로 100 인근",
-    coordinates: [37.54488, 127.05593],
-    bikes: 15,
-    docks: 3,
-  },
-  {
-    id: "ST-301",
-    name: "홍대입구역 2번출구 앞",
-    address: "양화로 160 인근",
-    coordinates: [37.55756, 126.92349],
-    bikes: 14,
-    docks: 6,
-  },
-  {
-    id: "ST-302",
-    name: "102. 망원역 1번출구 앞",
-    address: "월드컵로 80 인근",
-    coordinates: [37.5556488, 126.91062927],
-    bikes: 9,
-    docks: 6,
-  },
-  {
-    id: "ST-401",
-    name: "여의도공원 1번출입구 앞",
-    address: "여의공원로 68 인근",
-    coordinates: [37.52814, 126.9197],
-    bikes: 18,
-    docks: 4,
-  },
-  {
-    id: "ST-402",
-    name: "여의나루역 1번출구 앞",
-    address: "여의동로 343 인근",
-    coordinates: [37.52713, 126.9328],
-    bikes: 6,
-    docks: 12,
-  },
-  {
-    id: "ST-403",
-    name: "210. IFC몰",
-    address: "국제금융로 10 인근",
-    coordinates: [37.52606583, 126.92553711],
-    bikes: 8,
-    docks: 7,
-  },
-  {
-    id: "ST-501",
-    name: "반포한강공원 세빛섬 앞",
-    address: "올림픽대로 2085-14 인근",
-    coordinates: [37.51118, 126.99572],
-    bikes: 3,
-    docks: 15,
-  },
-  {
-    id: "ST-601",
-    name: "DDP 동문 앞",
-    address: "을지로 281 인근",
-    coordinates: [37.56617, 127.01014],
-    bikes: 11,
-    docks: 7,
-  },
-  {
-    id: "ST-701",
-    name: "잠실새내 나들목",
-    address: "한가람로 65 인근",
-    coordinates: [37.51939, 127.08675],
-    bikes: 10,
-    docks: 10,
-  },
-  {
-    id: "ST-801",
-    name: "노들섬 서측 입구",
-    address: "양녕로 445 인근",
-    coordinates: [37.51806, 126.95542],
-    bikes: 6,
-    docks: 8,
-  },
-  {
-    id: "ST-901",
-    name: "안국역 2번출구 앞",
-    address: "율곡로 62 인근",
-    coordinates: [37.5764, 126.98503],
-    bikes: 7,
-    docks: 5,
-  },
-];
+const STATIONS: Station[] = stationCatalog.stations.map((station) => ({
+  id: station.id,
+  name: station.name,
+  address: station.address,
+  coordinates: [station.latitude, station.longitude],
+  bikes: null,
+}));
 
 const QUICK_ROUTES = [
   { label: "망원시장 → 더현대", origin: "mangwon-market", destination: "the-hyundai-seoul" },
@@ -396,9 +273,8 @@ function usePlaceSuggestions(query: string, open: boolean): PlaceSearchState {
   };
 }
 
-function nearestStartStation(place: Place) {
-  return [...STATIONS]
-    .filter((station) => station.bikes > 0)
+function nearestStartStation(place: Place, stations: Station[]) {
+  return [...stations]
     .sort(
       (a, b) =>
         distanceMeters(place.coordinates, a.coordinates) -
@@ -406,20 +282,24 @@ function nearestStartStation(place: Place) {
     )[0];
 }
 
-function rankedEndStations(place: Place) {
-  return [...STATIONS]
-    .filter((station) => station.docks > 0)
-    .sort((a, b) => {
-      const scoreA = distanceMeters(place.coordinates, a.coordinates) - a.docks * 18;
-      const scoreB = distanceMeters(place.coordinates, b.coordinates) - b.docks * 18;
-      return scoreA - scoreB;
-    })
+function rankedEndStations(place: Place, stations: Station[]) {
+  return [...stations]
+    .sort(
+      (a, b) =>
+        distanceMeters(place.coordinates, a.coordinates) -
+        distanceMeters(place.coordinates, b.coordinates),
+    )
     .slice(0, 3);
 }
 
-function buildPlan(origin: Place, destination: Place, endStationId?: string): RoutePlan {
-  const startStation = nearestStartStation(origin);
-  const alternatives = rankedEndStations(destination);
+function buildPlan(
+  origin: Place,
+  destination: Place,
+  stations: Station[],
+  endStationId?: string,
+): RoutePlan {
+  const startStation = nearestStartStation(origin, stations);
+  const alternatives = rankedEndStations(destination, stations);
   const endStation =
     alternatives.find((station) => station.id === endStationId) ?? alternatives[0];
   const walkToMeters = Math.round(
@@ -692,12 +572,12 @@ function RouteMapChrome({
           <Bike size={18} aria-hidden="true" />
         </div>
         <div>
-          <span>추천 반납 대여소</span>
+          <span>목적지와 가까운 반납 대여소</span>
           <strong>{plan.endStation.name}</strong>
         </div>
-        <div className="dock-count">
-          <b>{plan.endStation.docks}</b>
-          <small>빈자리</small>
+        <div className="station-distance">
+          <b>{formatDistance(plan.walkFromMeters)}</b>
+          <small>목적지까지</small>
         </div>
       </div>
     </>
@@ -831,7 +711,13 @@ function LeafletRouteMap({ plan }: { plan: RoutePlan }) {
             fillColor: "#71907f",
             fillOpacity: 1,
           })
-            .bindTooltip(`${station.name} · 빈자리 ${station.docks}`)
+            .bindTooltip(
+              `${station.name} · 목적지까지 ${formatDistance(
+                Math.round(
+                  distanceMeters(station.coordinates, plan.destination.coordinates) * 1.12,
+                ),
+              )}`,
+            )
             .addTo(group);
         });
 
@@ -856,7 +742,7 @@ function LeafletRouteMap({ plan }: { plan: RoutePlan }) {
   return (
     <div className="map-wrap">
       <div ref={nodeRef} className="map-canvas" aria-label="따라와잉 경로 지도" />
-      <RouteMapChrome plan={plan} ready={ready} providerLabel="대체 지도 · 데모 현황" />
+      <RouteMapChrome plan={plan} ready={ready} providerLabel="대체 지도 · 운영 대여소" />
     </div>
   );
 }
@@ -996,7 +882,11 @@ function KakaoRouteMap({ plan, onError }: { plan: RoutePlan; onError: () => void
       .forEach((station) => {
         const dot = document.createElement("span");
         dot.className = "alternative-map-dot";
-        dot.title = `${station.name} · 빈자리 ${station.docks}`;
+        dot.title = `${station.name} · 목적지까지 ${formatDistance(
+          Math.round(
+            distanceMeters(station.coordinates, plan.destination.coordinates) * 1.12,
+          ),
+        )}`;
         dot.setAttribute("aria-hidden", "true");
         const overlay = new sdk.maps.CustomOverlay({
           map,
@@ -1088,10 +978,67 @@ export default function Home() {
   const [routeDetailsOpen, setRouteDetailsOpen] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [notice, setNotice] = useState("");
+  const [stations, setStations] = useState(STATIONS);
+  const [liveBikeStatus, setLiveBikeStatus] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void fetch("/api/bike-stations/realtime", {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Realtime bike status request failed.");
+        return response.json() as Promise<{
+          stations?: Array<{ id?: unknown; availableBikes?: unknown }>;
+        }>;
+      })
+      .then((payload) => {
+        const availabilityById = new Map<string, number>();
+        for (const station of payload.stations ?? []) {
+          if (
+            typeof station.id === "string" &&
+            typeof station.availableBikes === "number" &&
+            Number.isFinite(station.availableBikes) &&
+            station.availableBikes >= 0
+          ) {
+            availabilityById.set(station.id, Math.floor(station.availableBikes));
+          }
+        }
+
+        const minimumRealtimeStationCount = Math.floor(STATIONS.length * 0.98);
+        if (availabilityById.size < minimumRealtimeStationCount) {
+          throw new Error("Realtime bike station data is incomplete.");
+        }
+
+        const updatedStations = STATIONS.map((station) => ({
+          ...station,
+          bikes: availabilityById.get(station.id) ?? null,
+        }));
+
+        setStations(updatedStations);
+        setLiveBikeStatus("ready");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setLiveBikeStatus("unavailable");
+      });
+
+    return () => controller.abort();
+  }, []);
 
   const plan = useMemo(
-    () => buildPlan(committedOrigin, committedDestination, selectedEndStationId),
-    [committedDestination, committedOrigin, selectedEndStationId],
+    () =>
+      buildPlan(
+        committedOrigin,
+        committedDestination,
+        stations,
+        selectedEndStationId,
+      ),
+    [committedDestination, committedOrigin, selectedEndStationId, stations],
   );
   const kakaoRouteUrl = useMemo(() => buildKakaoBicycleRouteUrl(plan), [plan]);
 
@@ -1373,8 +1320,24 @@ export default function Home() {
                           <small>가장 가까운 대여소</small>
                           <strong>{plan.startStation.name}</strong>
                         </div>
-                        <span className="availability bikes-available">
-                          <Bike size={13} aria-hidden="true" /> {plan.startStation.bikes}대
+                        <span
+                          className={`availability ${
+                            liveBikeStatus !== "ready"
+                              ? "status-unlinked"
+                              : plan.startStation.bikes === 0
+                                ? "bikes-empty"
+                                : "bikes-live"
+                          }`}
+                        >
+                          {liveBikeStatus === "ready" && plan.startStation.bikes !== null ? (
+                            <>
+                              <Bike size={13} aria-hidden="true" /> {plan.startStation.bikes}대
+                            </>
+                          ) : liveBikeStatus === "loading" ? (
+                            "현황 확인 중"
+                          ) : (
+                            "현황 확인 필요"
+                          )}
                         </span>
                       </div>
                       <p>{plan.startStation.address}</p>
@@ -1395,13 +1358,13 @@ export default function Home() {
                       <div className="station-title-line">
                         <div>
                           <small>
-                            최적의 반납 대여소
+                            목적지와 가까운 반납 대여소
                             <span className="best-badge">추천</span>
                           </small>
                           <strong>{plan.endStation.name}</strong>
                         </div>
-                        <span className="availability docks-available">
-                          빈자리 {plan.endStation.docks}
+                        <span className="availability status-unlinked">
+                          {liveBikeStatus === "ready" ? "운영 확인" : "운영 목록 기준"}
                         </span>
                       </div>
                       <p>{plan.endStation.address}</p>
@@ -1440,7 +1403,9 @@ export default function Home() {
                                   )}
                                 </small>
                               </span>
-                              <span className="alternative-docks">빈자리 {station.docks}</span>
+                              <span className="alternative-distance">
+                                거리순
+                              </span>
                               {station.id === plan.endStation.id ? (
                                 <Check size={14} aria-hidden="true" />
                               ) : null}
@@ -1472,14 +1437,23 @@ export default function Home() {
               <div className="data-note">
                 <LocateFixed size={15} aria-hidden="true" />
                 <span>
-                  장소 검색과 지도는 <strong>카카오맵 실제 데이터</strong>, 따릉이 수량과 경로 시간은 프로토타입 예상치예요. 실제 출발 전 따릉이 앱에서 확인해 주세요.
+                  장소 검색은 <strong>카카오맵 실제 데이터</strong>, 대여소 위치는
+                  서울시 공식 데이터와 서울자전거 운영 목록(
+                  {STATIONS.length.toLocaleString("ko-KR")}곳)을 사용해요. {" "}
+                  {liveBikeStatus === "ready"
+                    ? "대여 가능 자전거 수는 실시간 현황을 반영했어요."
+                    : liveBikeStatus === "loading"
+                      ? "대여 가능 자전거 수를 확인하고 있어요."
+                      : "실시간 수량 연결이 지연되어 최근 운영 목록을 사용 중이에요."}
+                  {" "}반납 가능 여부와 경로 시간은 실제 출발 전 따릉이·지도 앱에서
+                  다시 확인해 주세요.
                   {" "}
                   <a
-                    href="https://data.seoul.go.kr/dataList/OA-15493/A/1/datasetView.do"
+                    href={stationCatalog.source.url}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    데이터 출처: 서울 열린데이터광장
+                    데이터 출처: 서울 열린데이터광장 · 2026년 6월 기준
                   </a>
                 </span>
               </div>

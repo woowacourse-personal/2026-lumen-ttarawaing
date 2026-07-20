@@ -873,14 +873,19 @@ input:focus-visible {
   font-weight: 730;
 }
 
-.bikes-available {
+.status-unlinked {
+  background: #f1f4f2;
+  color: #718079;
+}
+
+.bikes-live {
   background: var(--green-soft);
   color: var(--green-dark);
 }
 
-.docks-available {
-  background: #edf0fb;
-  color: #3b56ac;
+.bikes-empty {
+  background: #fff0eb;
+  color: #ad4a35;
 }
 
 .station-card-copy > p {
@@ -963,8 +968,8 @@ input:focus-visible {
   font-size: 8px;
 }
 
-.alternative-docks {
-  color: #4864bb;
+.alternative-distance {
+  color: #718079;
   font-size: 8px;
   font-weight: 680;
 }
@@ -1382,19 +1387,19 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-.dock-count {
+.station-distance {
   display: flex;
   align-items: flex-end;
   flex-direction: column;
 }
 
-.dock-count b {
+.station-distance b {
   color: var(--green-dark);
-  font-size: 17px;
+  font-size: 13px;
   line-height: 1;
 }
 
-.dock-count small {
+.station-distance small {
   margin-top: 2px;
   color: #8b9691;
   font-size: 8px;
