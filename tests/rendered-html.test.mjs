@@ -33,12 +33,15 @@ test("server-renders the ttarawaing route planner", async () => {
   assert.match(html, /최적 경로 찾기/);
   assert.match(html, /망원시장/);
   assert.match(html, /더현대 서울/);
-  assert.match(html, /nmap:\/\/route\/bicycle\?/);
-  assert.match(html, /v1lat=/);
-  assert.match(html, /v2lat=/);
-  assert.match(html, /출발 · 대여 · 반납 · 도착 4개 지점 포함/);
+  assert.match(
+    html,
+    /https:\/\/map\.kakao\.com\/link\/by\/bicycle\/[^\"]*37\.55605,126\.90523\/[^\"]*37\.5556488,126\.91062927\/[^\"]*37\.52606583,126\.92553711\/[^\"]*37\.52591,126\.92843/,
+  );
+  assert.match(html, /카카오맵에서 이어보기/);
+  assert.match(html, /출발 · 대여 · 반납 · 도착 4개 지점 자동 입력/);
+  assert.doesNotMatch(html, /nmap:\/\/|네이버 지도/);
   assert.match(html, /카카오맵 연동/);
-  assert.match(html, /카카오맵 연결 시/);
+  assert.match(html, /카카오맵 실제 데이터/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 

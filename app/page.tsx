@@ -20,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent } from "react";
 import type { LayerGroup, Map as LeafletMap } from "leaflet";
 import {
   loadKakaoMapsSdk,
@@ -456,35 +455,20 @@ function buildPlan(origin: Place, destination: Place, endStationId?: string): Ro
   };
 }
 
-function buildNaverRouteParams(plan: RoutePlan, appName: string) {
-  const [startLat, startLng] = plan.origin.coordinates;
-  const [pickupLat, pickupLng] = plan.startStation.coordinates;
-  const [returnLat, returnLng] = plan.endStation.coordinates;
-  const [destinationLat, destinationLng] = plan.destination.coordinates;
-
-  return new URLSearchParams({
-    slat: String(startLat),
-    slng: String(startLng),
-    sname: plan.origin.name,
-    v1lat: String(pickupLat),
-    v1lng: String(pickupLng),
-    v1name: plan.startStation.name,
-    v2lat: String(returnLat),
-    v2lng: String(returnLng),
-    v2name: plan.endStation.name,
-    dlat: String(destinationLat),
-    dlng: String(destinationLng),
-    dname: plan.destination.name,
-    appname: appName,
-  }).toString();
+function buildKakaoRoutePoint(point: { name: string; coordinates: Coordinates }) {
+  const [latitude, longitude] = point.coordinates;
+  return `${encodeURIComponent(point.name)},${latitude},${longitude}`;
 }
 
-function buildNaverBicycleRouteUrl(plan: RoutePlan, appName: string) {
-  return `nmap://route/bicycle?${buildNaverRouteParams(plan, appName)}`;
-}
+function buildKakaoBicycleRouteUrl(plan: RoutePlan) {
+  const points = [
+    plan.origin,
+    plan.startStation,
+    plan.endStation,
+    plan.destination,
+  ].map(buildKakaoRoutePoint);
 
-function buildNaverAndroidIntentUrl(plan: RoutePlan, appName: string) {
-  return `intent://route/bicycle?${buildNaverRouteParams(plan, appName)}#Intent;scheme=nmap;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;package=com.nhn.android.nmap;end`;
+  return `https://map.kakao.com/link/by/bicycle/${points.join("/")}`;
 }
 
 function formatDistance(meters: number) {
@@ -1109,52 +1093,7 @@ export default function Home() {
     () => buildPlan(committedOrigin, committedDestination, selectedEndStationId),
     [committedDestination, committedOrigin, selectedEndStationId],
   );
-  const naverRouteUrl = useMemo(
-    () =>
-      buildNaverBicycleRouteUrl(
-        plan,
-        "https://ttarawaing.dnsxo0712.chatgpt.site",
-      ),
-    [plan],
-  );
-
-  const openNaverRoute = useCallback(
-    (event: MouseEvent<HTMLAnchorElement>) => {
-      event.preventDefault();
-
-      const appName = window.location.origin;
-      const userAgent = navigator.userAgent;
-      const appRouteUrl = buildNaverBicycleRouteUrl(plan, appName);
-
-      setNotice("출발지와 두 대여소, 도착지를 네이버 지도에 담았어요.");
-
-      if (/Android/i.test(userAgent)) {
-        window.location.href = buildNaverAndroidIntentUrl(plan, appName);
-        return;
-      }
-
-      if (/iPhone|iPad|iPod/i.test(userAgent)) {
-        const clickedAt = Date.now();
-        window.location.href = appRouteUrl;
-        window.setTimeout(() => {
-          if (Date.now() - clickedAt < 2000 && !document.hidden) {
-            window.location.href = "https://itunes.apple.com/app/id311867728?mt=8";
-          }
-        }, 1500);
-        return;
-      }
-
-      void navigator.clipboard?.writeText(appRouteUrl).catch(() => undefined);
-      window.open(
-        "https://map.naver.com/p/directions",
-        "_blank",
-        "noopener,noreferrer",
-      );
-      setNotice("네이버 지도 웹을 열고, 모바일 앱용 네 지점 경로를 복사했어요.");
-      window.setTimeout(() => setNotice(""), 3200);
-    },
-    [plan],
-  );
+  const kakaoRouteUrl = useMemo(() => buildKakaoBicycleRouteUrl(plan), [plan]);
 
   const commitRoute = useCallback(
     (nextOrigin?: Place | null, nextDestination?: Place | null) => {
@@ -1259,7 +1198,7 @@ export default function Home() {
         <div className="header-actions">
           <span className="service-badge">
             <span />
-            카카오맵 연동 준비
+            카카오맵 연동
           </span>
           <button className="icon-button" type="button" aria-label="도움말">
             <CircleHelp size={19} aria-hidden="true" />
@@ -1533,7 +1472,7 @@ export default function Home() {
               <div className="data-note">
                 <LocateFixed size={15} aria-hidden="true" />
                 <span>
-                  카카오맵 연결 시 장소 검색과 지도는 <strong>실제 데이터</strong>, 따릉이 수량과 경로 시간은 프로토타입 예상치예요. 실제 출발 전 따릉이 앱에서 확인해 주세요.
+                  장소 검색과 지도는 <strong>카카오맵 실제 데이터</strong>, 따릉이 수량과 경로 시간은 프로토타입 예상치예요. 실제 출발 전 따릉이 앱에서 확인해 주세요.
                   {" "}
                   <a
                     href="https://data.seoul.go.kr/dataList/OA-15493/A/1/datasetView.do"
@@ -1546,21 +1485,22 @@ export default function Home() {
               </div>
 
               <a
-                className="naver-link"
-                href={naverRouteUrl}
-                onClick={openNaverRoute}
-                aria-label="출발지, 대여 대여소, 반납 대여소, 도착지를 포함해 네이버 지도 앱에서 열기"
+                className="kakao-link"
+                href={kakaoRouteUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="출발지, 대여소, 반납 대여소, 도착지를 포함해 카카오맵 자전거 길찾기에서 열기"
               >
-                <span className="naver-link-icon">
+                <span className="kakao-link-icon">
                   <Navigation size={16} fill="currentColor" aria-hidden="true" />
                 </span>
-                <span className="naver-link-copy">
-                  <strong>네이버 지도에서 이어보기</strong>
-                  <small>출발 · 대여 · 반납 · 도착 4개 지점 포함</small>
+                <span className="kakao-link-copy">
+                  <strong>카카오맵에서 이어보기</strong>
+                  <small>출발 · 대여 · 반납 · 도착 4개 지점 자동 입력</small>
                 </span>
-                <ExternalLink className="naver-link-arrow" size={15} aria-hidden="true" />
+                <ExternalLink className="kakao-link-arrow" size={15} aria-hidden="true" />
               </a>
-              <div className="naver-route-preview" aria-label="네이버 지도에 전달할 경로">
+              <div className="kakao-route-preview" aria-label="카카오맵에 전달할 경로">
                 <span>{plan.origin.name}</span>
                 <ArrowRight size={11} aria-hidden="true" />
                 <span>{plan.startStation.name}</span>
@@ -1569,8 +1509,8 @@ export default function Home() {
                 <ArrowRight size={11} aria-hidden="true" />
                 <span>{plan.destination.name}</span>
               </div>
-              <p className="naver-route-note">
-                모바일에서는 네이버 지도 앱의 자전거 경로로 네 지점이 자동 입력돼요.
+              <p className="kakao-route-note">
+                카카오맵에서는 네 지점을 하나의 자전거 경로로 열어요. 첫·마지막 도보 구간은 따라와잉 안내를 확인해 주세요.
               </p>
             </section>
           </div>

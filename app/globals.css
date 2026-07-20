@@ -1006,7 +1006,7 @@ input:focus-visible {
   color: var(--green-dark);
 }
 
-.naver-link {
+.kakao-link {
   display: grid;
   width: 100%;
   min-height: 54px;
@@ -1022,45 +1022,45 @@ input:focus-visible {
   text-decoration: none;
 }
 
-.naver-link:hover {
-  border-color: #b8d8cb;
-  color: var(--green-dark);
+.kakao-link:hover {
+  border-color: #dccb00;
+  color: #302d14;
 }
 
-.naver-link-icon {
+.kakao-link-icon {
   display: grid;
   width: 32px;
   height: 32px;
   place-items: center;
   border-radius: 9px;
-  background: var(--green-soft);
-  color: var(--green-dark);
+  background: #fee500;
+  color: #191919;
 }
 
-.naver-link-copy {
+.kakao-link-copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
-.naver-link-copy strong {
+.kakao-link-copy strong {
   color: #405048;
   font-size: 11px;
   font-weight: 710;
 }
 
-.naver-link-copy small {
+.kakao-link-copy small {
   color: #8a958f;
   font-size: 9px;
   font-weight: 540;
 }
 
-.naver-link-arrow {
+.kakao-link-arrow {
   justify-self: end;
 }
 
-.naver-route-preview {
+.kakao-route-preview {
   display: flex;
   overflow-x: auto;
   align-items: center;
@@ -1072,11 +1072,11 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-.naver-route-preview::-webkit-scrollbar {
+.kakao-route-preview::-webkit-scrollbar {
   display: none;
 }
 
-.naver-route-preview span {
+.kakao-route-preview span {
   overflow: hidden;
   max-width: 92px;
   flex: 0 0 auto;
@@ -1085,12 +1085,12 @@ input:focus-visible {
   text-overflow: ellipsis;
 }
 
-.naver-route-preview svg {
+.kakao-route-preview svg {
   flex: 0 0 auto;
   color: #a7b1ac;
 }
 
-.naver-route-note {
+.kakao-route-note {
   margin: 3px 2px 0;
   color: #98a19d;
   font-size: 8px;
