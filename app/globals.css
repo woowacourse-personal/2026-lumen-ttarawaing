@@ -262,7 +262,7 @@ input:focus-visible {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
 }
 
 .place-field {
@@ -472,27 +472,24 @@ input:focus-visible {
 }
 
 .swap-button {
-  position: absolute;
-  z-index: 4;
-  top: calc(50% + 10px);
-  right: 11px;
   display: grid;
   width: 31px;
   height: 31px;
+  flex: 0 0 auto;
   cursor: pointer;
   place-items: center;
+  margin: 0;
   border: 1px solid #dbe4de;
   border-radius: 9px;
   background: white;
   color: #617069;
   box-shadow: 0 4px 12px rgba(32, 53, 44, 0.08);
-  transform: translateY(-50%);
   transition: color 150ms ease, transform 150ms ease;
 }
 
 .swap-button:hover {
   color: var(--green);
-  transform: translateY(calc(-50% - 1px));
+  transform: translateY(-1px);
 }
 
 .form-error {

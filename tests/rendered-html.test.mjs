@@ -67,16 +67,19 @@ test("draws road geometry instead of manufactured map curves", async () => {
   assert.match(routeSource, /routeRatio > 4/);
 });
 
-test("centers the place-swap control between the two input boxes", async () => {
-  const styles = await readFile(
-    new URL("../app/globals.css", import.meta.url),
-    "utf8",
-  );
+test("keeps the place-swap control in flow between the two input boxes", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
   const swapButtonRule = styles.match(/\.swap-button\s*\{([^}]+)\}/)?.[1] ?? "";
+  const fieldsStackRule = styles.match(/\.fields-stack\s*\{([^}]+)\}/)?.[1] ?? "";
 
-  assert.match(swapButtonRule, /top:\s*calc\(50% \+ 10px\)/);
-  assert.match(swapButtonRule, /transform:\s*translateY\(-50%\)/);
-  assert.doesNotMatch(swapButtonRule, /top:\s*85px/);
+  assert.doesNotMatch(swapButtonRule, /position:\s*absolute|\btop:|\bright:/);
+  assert.match(swapButtonRule, /flex:\s*0 0 auto/);
+  assert.match(fieldsStackRule, /gap:\s*6px/);
+  assert.match(pageSource, /tone === "destination" && onSwap/);
+  assert.match(pageSource, /onSwap=\{swapPlaces\}/);
 });
 
 test("searches and accepts both Seoul and Gyeonggi Kakao places", async () => {

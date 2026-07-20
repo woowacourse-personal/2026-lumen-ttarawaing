@@ -528,6 +528,7 @@ type PlaceFieldProps = {
   onQueryChange: (value: string) => void;
   onSelect: (place: Place) => void;
   onUseLocation?: () => void;
+  onSwap?: () => void;
 };
 
 function PlaceField({
@@ -540,6 +541,7 @@ function PlaceField({
   onQueryChange,
   onSelect,
   onUseLocation,
+  onSwap,
 }: PlaceFieldProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -553,13 +555,23 @@ function PlaceField({
   };
 
   return (
-    <div className="place-field">
+    <div className={`place-field ${tone}`}>
       <div className="field-heading">
         <label htmlFor={id}>{label}</label>
         {tone === "origin" && onUseLocation ? (
           <button className="location-link" type="button" onClick={onUseLocation}>
             <Crosshair size={13} strokeWidth={2.3} aria-hidden="true" />
             현재 위치
+          </button>
+        ) : null}
+        {tone === "destination" && onSwap ? (
+          <button
+            className="swap-button"
+            type="button"
+            aria-label="출발지와 도착지 바꾸기"
+            onClick={onSwap}
+          >
+            <ArrowDownUp size={17} aria-hidden="true" />
           </button>
         ) : null}
       </div>
@@ -1441,16 +1453,9 @@ export default function Home() {
                       if (destination?.name !== value) setDestination(null);
                     }}
                     onSelect={selectDestination}
+                    onSwap={swapPlaces}
                   />
                 </div>
-                <button
-                  className="swap-button"
-                  type="button"
-                  aria-label="출발지와 도착지 바꾸기"
-                  onClick={swapPlaces}
-                >
-                  <ArrowDownUp size={17} aria-hidden="true" />
-                </button>
               </div>
 
               {errorMessage ? (
