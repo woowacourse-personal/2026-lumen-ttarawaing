@@ -67,6 +67,18 @@ test("draws road geometry instead of manufactured map curves", async () => {
   assert.match(routeSource, /routeRatio > 4/);
 });
 
+test("centers the place-swap control between the two input boxes", async () => {
+  const styles = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  const swapButtonRule = styles.match(/\.swap-button\s*\{([^}]+)\}/)?.[1] ?? "";
+
+  assert.match(swapButtonRule, /top:\s*calc\(50% \+ 10px\)/);
+  assert.match(swapButtonRule, /transform:\s*translateY\(-50%\)/);
+  assert.doesNotMatch(swapButtonRule, /top:\s*85px/);
+});
+
 test("uses the current operating-station catalog for the Sadang regression", async () => {
   const catalogUrl = new URL(
     "../app/data/seoul-bike-stations.json",
