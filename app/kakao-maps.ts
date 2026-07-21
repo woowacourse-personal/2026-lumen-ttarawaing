@@ -76,9 +76,6 @@ export type KakaoSdk = {
       yAnchor?: number;
       zIndex?: number;
     }) => KakaoMapObject;
-    event: {
-      clearInstanceListeners(target: KakaoMap): void;
-    };
     services: {
       Places: new () => KakaoPlaces;
       Status: {

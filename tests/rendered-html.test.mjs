@@ -85,6 +85,8 @@ test("clears the active route from a dedicated re-entry button", async () => {
   assert.match(pageSource, /const resetRoute = \(\) =>/);
   assert.match(pageSource, /setCommittedRoute\(null\)/);
   assert.match(pageSource, /document\.getElementById\("origin"\)\?\.focus\(\)/);
+  assert.doesNotMatch(pageSource, /clearInstanceListeners/);
+  assert.doesNotMatch(pageSource, /replaceChildren\(\)/);
 });
 
 test("draws road geometry instead of manufactured map curves", async () => {

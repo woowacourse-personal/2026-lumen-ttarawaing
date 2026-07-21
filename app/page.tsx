@@ -1124,12 +1124,8 @@ function KakaoRouteMap({
       clearMapObjects();
       locationObjectRef.current?.setMap(null);
       locationObjectRef.current = null;
-      if (mapRef.current && sdkRef.current) {
-        sdkRef.current.maps.event.clearInstanceListeners(mapRef.current);
-      }
       mapRef.current = null;
       sdkRef.current = null;
-      mapNode?.replaceChildren();
     };
   }, [clearMapObjects, onError]);
 
