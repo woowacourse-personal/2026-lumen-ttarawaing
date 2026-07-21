@@ -36,7 +36,7 @@ test("server-renders the ttarawaing route planner", async () => {
   assert.doesNotMatch(html, /오늘은 따릉이와 함께 어디로 가볼까요/);
   assert.doesNotMatch(html, /어디로 따라갈까요/);
   assert.match(html, /최적 경로 찾기/);
-  assert.match(html, /히스토리/);
+  assert.doesNotMatch(html, /히스토리/);
   assert.match(html, /이전에 찾은 경로가 여기에 표시돼요/);
   assert.match(html, /출발 장소를 검색해 주세요/);
   assert.match(html, /도착 장소를 검색해 주세요/);
@@ -71,6 +71,7 @@ test("stores and reopens recent route history on this device", async () => {
     pageSource,
     /onClick=\{\(\) => commitRoute\(route\.origin, route\.destination\)\}/,
   );
+  assert.doesNotMatch(pageSource, /<span>히스토리<\/span>/);
   assert.doesNotMatch(pageSource, /QUICK_ROUTES|chooseQuickRoute/);
 });
 
@@ -146,8 +147,9 @@ test("locates the user from a lower-right map control on both map providers", as
   assert.match(pageSource, /map\.panTo\(position\)/);
   assert.match(pageSource, /current-location-marker/);
   assert.match(kakaoSource, /panTo\(position: KakaoLatLng\)/);
+  assert.match(pageSource, /L\.control\.zoom\(\{ position: "topright" \}\)/);
   assert.match(guideControlsRule, /right:\s*20px/);
-  assert.match(guideControlsRule, /bottom:\s*96px/);
+  assert.match(guideControlsRule, /bottom:\s*20px/);
   assert.match(guideControlsRule, /align-items:\s*flex-end/);
 });
 

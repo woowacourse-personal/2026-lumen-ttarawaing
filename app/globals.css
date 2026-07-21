@@ -517,18 +517,7 @@ input:focus-visible {
 }
 
 .route-history {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
   margin: 16px 0 0 26px;
-}
-
-.route-history > span {
-  flex: 0 0 auto;
-  padding-top: 6px;
-  color: #929c97;
-  font-size: 10px;
-  font-weight: 650;
 }
 
 .route-history > div {
@@ -1384,7 +1373,7 @@ input:focus-visible {
   position: absolute;
   z-index: 410;
   right: 20px;
-  bottom: 96px;
+  bottom: 20px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1698,15 +1687,6 @@ input:focus-visible {
   .result-section {
     padding-right: 17px;
     padding-left: 17px;
-  }
-
-  .route-history {
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .route-history > span {
-    padding-top: 0;
   }
 
   .mode-labels span {

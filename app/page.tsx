@@ -868,7 +868,7 @@ function LeafletRouteMap({
         attributionControl: true,
       }).setView([37.561, 127.006], 13);
       map.attributionControl.setPrefix(false);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
+      L.control.zoom({ position: "topright" }).addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution:
@@ -1730,7 +1730,6 @@ export default function Home() {
               ) : null}
 
               <div className="route-history" aria-label="최근 검색 경로">
-                <span>히스토리</span>
                 <div>
                   {routeHistory.length ? (
                     routeHistory.map((route) => {
