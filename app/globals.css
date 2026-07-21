@@ -1185,11 +1185,42 @@ input:focus-visible {
 }
 
 .route-marker-wrapper {
+  --route-marker-color: var(--green);
+
+  position: relative;
   display: block;
   width: 42px;
   height: 42px;
   border: 0 !important;
   background: transparent !important;
+}
+
+.route-marker-wrapper::after {
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  width: 12px;
+  height: 10px;
+  background: var(--route-marker-color);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.route-marker-wrapper.origin-marker-wrapper {
+  --route-marker-color: var(--blue);
+}
+
+.route-marker-wrapper.bike-marker-wrapper {
+  --route-marker-color: var(--green);
+}
+
+.route-marker-wrapper.return-marker-wrapper {
+  --route-marker-color: #047a5d;
+}
+
+.route-marker-wrapper.destination-marker-wrapper {
+  --route-marker-color: var(--coral);
 }
 
 .kakao-route-marker {
@@ -1199,20 +1230,18 @@ input:focus-visible {
 
 .route-marker {
   position: relative;
+  z-index: 1;
   display: grid;
   width: 38px;
   height: 34px;
   place-items: center;
   border: 3px solid white;
   border-radius: 12px 12px 12px 4px;
+  background: var(--route-marker-color);
   color: white;
   font-size: 10px;
   font-weight: 780;
   box-shadow: 0 5px 14px rgba(25, 46, 37, 0.24);
-}
-
-.route-marker::after {
-  display: none;
 }
 
 .route-marker-wrapper .route-marker {
@@ -1221,22 +1250,18 @@ input:focus-visible {
 
 .route-marker.origin-marker {
   width: 42px;
-  background: var(--blue);
 }
 
 .route-marker.bike-marker {
   width: 42px;
-  background: var(--green);
 }
 
 .route-marker.return-marker {
   width: 42px;
-  background: #047a5d;
 }
 
 .route-marker.destination-marker {
   width: 42px;
-  background: var(--coral);
 }
 
 .alternative-map-dot {

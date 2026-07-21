@@ -607,7 +607,7 @@ function PlaceField({
 }: PlaceFieldProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const { matches, loading, source, failed } = usePlaceSuggestions(query, open);
+  const { matches, loading, failed } = usePlaceSuggestions(query, open);
   const boundedActiveIndex = Math.min(activeIndex, Math.max(0, matches.length - 1));
 
   const choose = (place: Place) => {
@@ -697,17 +697,11 @@ function PlaceField({
       </div>
       {open ? (
         <div className="suggestions" id={`${id}-suggestions`} role="listbox">
-          <div className="suggestion-eyebrow">
-            {loading
-              ? "카카오맵에서 검색 중…"
-              : source === "kakao"
-                ? "카카오맵 서울·경기 실제 장소"
-                : failed
-                  ? "데모 장소로 검색 중"
-                  : query
-                    ? "검색 결과"
-                    : "서울·경기 검색 지원"}
-          </div>
+          {loading || failed ? (
+            <div className="suggestion-eyebrow">
+              {loading ? "카카오맵에서 검색 중…" : "데모 장소로 검색 중"}
+            </div>
+          ) : null}
           {matches.length ? (
             matches.map((place, index) => (
               <button
@@ -939,13 +933,13 @@ function LeafletRouteMap({
       ) => {
         L.marker(coordinates, {
           icon: L.divIcon({
-            className: "route-marker-wrapper",
+            className: `route-marker-wrapper ${className}-wrapper`,
             html: `<span class="route-marker ${className}">${label}</span>`,
             iconSize: [42, 42],
-            iconAnchor: [21, 38],
+            iconAnchor: [21, 42],
           }),
         })
-          .bindTooltip(tooltip, { direction: "top", offset: [0, -34] })
+          .bindTooltip(tooltip, { direction: "top", offset: [0, -38] })
           .addTo(group);
       };
 
@@ -1214,7 +1208,7 @@ function KakaoRouteMap({
       tooltip: string,
     ) => {
       const wrapper = document.createElement("span");
-      wrapper.className = "route-marker-wrapper kakao-route-marker";
+      wrapper.className = `route-marker-wrapper kakao-route-marker ${className}-wrapper`;
       wrapper.title = tooltip;
       wrapper.setAttribute("aria-hidden", "true");
       const marker = document.createElement("span");

@@ -253,6 +253,26 @@ test("uses full start and destination labels on both map providers", async () =>
   assert.match(styles, /\.route-marker\.destination-marker\s*\{[^}]*width:\s*42px/s);
 });
 
+test("anchors every route marker at the visible pointer tip", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pageSource, /iconSize:\s*\[42, 42\]/);
+  assert.match(pageSource, /iconAnchor:\s*\[21, 42\]/);
+  assert.match(pageSource, /xAnchor:\s*0\.5,\s*\n\s*yAnchor:\s*1/);
+  assert.match(
+    styles,
+    /\.route-marker-wrapper\s*\{[^}]*width:\s*42px[^}]*height:\s*42px/s,
+  );
+  assert.match(
+    styles,
+    /\.route-marker-wrapper::after\s*\{[^}]*top:\s*32px[^}]*height:\s*10px/s,
+  );
+  assert.match(pageSource, /\$\{className\}-wrapper/);
+});
+
 test("searches and accepts both Seoul and Gyeonggi Kakao places", async () => {
   const [pageSource, kakaoSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
@@ -266,7 +286,7 @@ test("searches and accepts both Seoul and Gyeonggi Kakao places", async () => {
   assert.match(kakaoSource, /Promise\.allSettled/);
   assert.match(kakaoSource, /result\.value\.filter/);
   assert.match(kakaoSource, /result\.id \|\| `\$\{result\.place_name\}/);
-  assert.match(pageSource, /카카오맵 서울·경기 실제 장소/);
+  assert.doesNotMatch(pageSource, /카카오맵 서울·경기 실제 장소/);
   assert.match(pageSource, /isSupportedPlaceAddress\(place\.address\)/);
   assert.doesNotMatch(pageSource, /place\.address\.includes\("서울"\)/);
 });
