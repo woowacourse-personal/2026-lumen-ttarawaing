@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  DEFAULT_PASS_TYPE,
+  PASS_OPTIONS,
+  TRANSFER_STOP_OVERHEAD_MINUTES,
+  getPassSafeRideMinutes,
+  initialMinimumStopCount,
+  selectRouteCorridorStations,
+  validateBikeLegDurations,
+} from "../app/pass-planning.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -36,6 +45,11 @@ test("server-renders the ttarawaing route planner", async () => {
   assert.doesNotMatch(html, /오늘은 따릉이와 함께 어디로 가볼까요/);
   assert.doesNotMatch(html, /어디로 따라갈까요/);
   assert.match(html, /최적 경로 찾기/);
+  assert.match(html, /현재 이용권/);
+  assert.match(html, /1시간권/);
+  assert.match(html, /2시간권/);
+  assert.match(html, /3시간권/);
+  assert.match(html, /상관 없음/);
   assert.doesNotMatch(html, /히스토리/);
   assert.match(html, /이전에 찾은 경로가 여기에 표시돼요/);
   assert.match(html, /출발 장소를 검색해 주세요/);
@@ -73,6 +87,126 @@ test("stores and reopens recent route history on this device", async () => {
   );
   assert.doesNotMatch(pageSource, /<span>히스토리<\/span>/);
   assert.doesNotMatch(pageSource, /QUICK_ROUTES|chooseQuickRoute/);
+});
+
+test("defaults to a remembered one, two, three-hour, or unlimited pass choice", async () => {
+  const [pageSource, planningSource] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/pass-planning.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.equal(DEFAULT_PASS_TYPE, "60");
+  assert.deepEqual(
+    PASS_OPTIONS.map(({ value, label }) => [value, label]),
+    [
+      ["60", "1시간권"],
+      ["120", "2시간권"],
+      ["180", "3시간권"],
+      ["none", "상관 없음"],
+    ],
+  );
+  assert.match(pageSource, /type="radio"/);
+  assert.match(pageSource, /name="bike-pass"/);
+  assert.match(pageSource, /checked=\{passType === option\.value\}/);
+  assert.match(pageSource, /window\.localStorage\.getItem\(PASS_TYPE_STORAGE_KEY\)/);
+  assert.match(pageSource, /window\.localStorage\.setItem\(PASS_TYPE_STORAGE_KEY/);
+  assert.match(planningSource, /DEFAULT_PASS_TYPE: PassType = "60"/);
+});
+
+test("uses a five-minute buffer and the theoretical minimum transfer count", () => {
+  assert.equal(getPassSafeRideMinutes("60"), 55);
+  assert.equal(getPassSafeRideMinutes("120"), 115);
+  assert.equal(getPassSafeRideMinutes("180"), 175);
+  assert.equal(getPassSafeRideMinutes("none"), null);
+  assert.equal(TRANSFER_STOP_OVERHEAD_MINUTES, 3);
+
+  assert.equal(initialMinimumStopCount(55, "60"), 0);
+  assert.equal(initialMinimumStopCount(55.01, "60"), 1);
+  assert.equal(initialMinimumStopCount(110, "60"), 1);
+  assert.equal(initialMinimumStopCount(110.01, "60"), 2);
+  assert.equal(initialMinimumStopCount(500, "none"), 0);
+  assert.deepEqual(validateBikeLegDurations([55, 54.9], "60"), {
+    isWithinLimit: true,
+    safeMinutes: 55,
+    violatingLegIndexes: [],
+  });
+  assert.deepEqual(validateBikeLegDurations([55.01, 40], "60"), {
+    isWithinLimit: false,
+    safeMinutes: 55,
+    violatingLegIndexes: [0],
+  });
+});
+
+test("selects distinct ordered stations along the actual route corridor", () => {
+  const routePath = [
+    [37.5, 126.9],
+    [37.5, 127.0],
+    [37.5, 127.1],
+  ];
+  const stations = [
+    { id: "start", coordinates: [37.5, 126.9] },
+    { id: "first", coordinates: [37.5004, 126.966] },
+    { id: "second", coordinates: [37.4997, 127.034] },
+    { id: "off-route", coordinates: [37.52, 127.0] },
+    { id: "end", coordinates: [37.5, 127.1] },
+  ];
+
+  const selected = selectRouteCorridorStations({
+    routePath,
+    stations,
+    stopCount: 2,
+    excludedStationIds: new Set(["start", "end"]),
+  });
+  assert.deepEqual(selected.map(({ id }) => id), ["first", "second"]);
+});
+
+test("builds and validates the minimum number of road-routed transfer stops", async () => {
+  const [pageSource, routeSource] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/route-geometry.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pageSource, /let stopCount = Math\.max\(1, initialStopCount\)/);
+  assert.match(pageSource, /stopCount \+= 1/);
+  assert.match(pageSource, /MAX_TRANSFER_COMBINATIONS_PER_STOP_COUNT = 4/);
+  assert.doesNotMatch(pageSource, /MAX_TOTAL_TRANSFER_ROUTE_ATTEMPTS/);
+  assert.match(pageSource, /const exclusionQueue: Set<string>\[\]/);
+  assert.match(pageSource, /triedStationSequences/);
+  assert.match(pageSource, /selectRouteCorridorStations/);
+  assert.match(pageSource, /areBikeLegsWithinPassLimit\(bikeLegMinutes, passType\)/);
+  assert.match(pageSource, /geometry\.bikeLegs\.every\(\(leg\) => leg\.source === "osrm"\)/);
+  assert.match(routeSource, /transferStations\?: Coordinates\[\]/);
+  assert.match(routeSource, /route\.legs/);
+  assert.match(routeSource, /loadBikeRoute\(getBikeCoordinates\(input\)\)/);
+  assert.match(routeSource, /bikeLegs: BikeRouteLeg\[\]/);
+  assert.match(routeSource, /attachRequestedWaypoints\(path, coordinates\)/);
+  assert.match(routeSource, /connectorDistance \/ bicycleMetersPerSecond/);
+  assert.match(pageSource, /if \(!active\) return;[\s\S]*const safeRideMinutes/);
+  assert.match(pageSource, /const geometry = await loadRouteGeometry[\s\S]*if \(!active\) return;/);
+});
+
+test("shows transfer stops consistently in the timeline, maps, and Kakao continuation", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pageSource, /bikeLegs\.map\(\(leg, index\)/);
+  assert.match(pageSource, /중간 반납·재대여 대여소/);
+  assert.match(pageSource, /반납 완료 알림을 확인한 뒤 다시 대여해 주세요/);
+  assert.match(pageSource, /transferStops\.length \+ 2/);
+  assert.equal((pageSource.match(/transferStops\.forEach\(\(station, index\)/g) ?? []).length, 2);
+  assert.match(pageSource, /\.\.\.transferStops/);
+  assert.match(pageSource, /모든 경유 지점을 하나의 자전거 경로로 열어요/);
+  assert.match(pageSource, /const KAKAO_MAX_WAYPOINTS = 5/);
+  assert.match(pageSource, /startIndex \+= group\.length - 1/);
+  assert.match(pageSource, /카카오맵 경유지 제한에 맞춰/);
+  assert.doesNotMatch(pageSource, /4개 지점 자동 입력|네 지점을 하나의/);
+  assert.match(pageSource, /이 경로를 이용권에 안전한 경로라고 안내할 수 없어요/);
+  assert.match(pageSource, /passType === "none" \? "not-needed" : "unavailable"/);
+  assert.match(pageSource, /실시간 대여소[\s\S]*이동 중 바뀔 수 있어요/);
+  assert.match(styles, /\.route-marker-wrapper\.transfer-marker-wrapper/);
+  assert.match(styles, /\.transfer-station \.station-number/);
 });
 
 test("clears the active route from a dedicated re-entry button", async () => {
@@ -236,7 +370,7 @@ test("does not imply live return-station availability", async () => {
   );
 
   assert.doesNotMatch(pageSource, /운영 확인|운영 목록 기준/);
-  assert.match(pageSource, /반납 가능 여부와 경로 시간은 실제 출발 전/);
+  assert.match(pageSource, /반납[\s\S]{0,40}가능 여부와 경로 시간은 실제 출발 전/);
 });
 
 test("skips an empty nearest rental station and explains the substitution", async () => {
@@ -304,13 +438,14 @@ test("focuses the map when each route timeline place is selected", async () => {
   assert.match(pageSource, /focusMapPoint\("startStation"\)/);
   assert.match(pageSource, /focusMapPoint\("endStation"\)/);
   assert.match(pageSource, /focusMapPoint\("destination"\)/);
+  assert.match(pageSource, /focusMapPoint\(transferStation\)/);
   assert.match(pageSource, /출발지를 지도에서 보기/);
   assert.match(pageSource, /출발 대여소를 지도에서 보기/);
   assert.match(pageSource, /도착 대여소를 지도에서 보기/);
   assert.match(pageSource, /도착지를 지도에서 보기/);
   assert.match(
     pageSource,
-    /<RouteMap\s+plan=\{plan\}\s+focusRequest=\{mapFocusRequest\}/,
+    /<RouteMap[\s\S]*?plan=\{plan\}[\s\S]*?focusRequest=\{mapFocusRequest\}/,
   );
   assert.match(
     pageSource,
@@ -319,9 +454,9 @@ test("focuses the map when each route timeline place is selected", async () => {
   assert.match(pageSource, /const ROUTE_FOCUS_KAKAO_LEVEL = 2/);
   assert.match(
     pageSource,
-    /mapRef\.current\.flyTo\(\s*plan\[focusRequest\.target\]\.coordinates,\s*ROUTE_FOCUS_LEAFLET_ZOOM/,
+    /mapRef\.current\.flyTo\(\s*focusRequest\.coordinates,\s*ROUTE_FOCUS_LEAFLET_ZOOM/,
   );
-  assert.match(pageSource, /plan\[requestedFocus\.target\]\.coordinates/);
+  assert.match(pageSource, /requestedFocus\.coordinates/);
   assert.match(
     pageSource,
     /map\.setLevel\(ROUTE_FOCUS_KAKAO_LEVEL\);\s*map\.panTo\(position\);/s,
@@ -354,6 +489,10 @@ test("summarizes route time as icon and duration in travel order", async () => {
   assert.match(
     pageSource,
     /const totalMinutes = walkToMinutes \+ bikeMinutes \+ walkFromMinutes;/,
+  );
+  assert.match(
+    pageSource,
+    /transferStopCount \* TRANSFER_STOP_OVERHEAD_MINUTES/,
   );
   assert.doesNotMatch(pageSource, /환승 2분/);
   assert.doesNotMatch(

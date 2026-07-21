@@ -7,9 +7,15 @@ export type RouteSegment = {
   durationSeconds: number;
 };
 
+export type BikeRouteLeg = Pick<
+  RouteSegment,
+  "source" | "distanceMeters" | "durationSeconds"
+>;
+
 export type RouteGeometry = {
   walkTo: RouteSegment;
   bike: RouteSegment;
+  bikeLegs: BikeRouteLeg[];
   walkFrom: RouteSegment;
 };
 
@@ -18,6 +24,7 @@ export type RouteGeometryInput = {
   startStation: Coordinates;
   endStation: Coordinates;
   destination: Coordinates;
+  transferStations?: Coordinates[];
 };
 
 type RouteProfile = "foot" | "bike";
@@ -25,6 +32,7 @@ type RouteProfile = "foot" | "bike";
 type OsrmRoute = {
   distance?: unknown;
   duration?: unknown;
+  legs?: unknown;
   geometry?: {
     type?: unknown;
     coordinates?: unknown;
@@ -50,6 +58,14 @@ const SEGMENT_CACHE_LIMIT = 48;
 
 const resolvedSegmentCache = new Map<string, RouteSegment>();
 const inFlightSegmentCache = new Map<string, Promise<RouteSegment>>();
+const resolvedBikeRouteCache = new Map<
+  string,
+  { segment: RouteSegment; legs: BikeRouteLeg[] }
+>();
+const inFlightBikeRouteCache = new Map<
+  string,
+  Promise<{ segment: RouteSegment; legs: BikeRouteLeg[] }>
+>();
 
 let requestQueue: Promise<void> = Promise.resolve();
 let nextRequestAt = 0;
@@ -90,11 +106,24 @@ function segmentKey(profile: RouteProfile, from: Coordinates, to: Coordinates) {
   return `${profile}:${coordinateKey(from)}>${coordinateKey(to)}`;
 }
 
+function bikeRouteKey(coordinates: Coordinates[]) {
+  return `bike:${coordinates.map(coordinateKey).join(">")}`;
+}
+
+function getBikeCoordinates(input: RouteGeometryInput) {
+  return [
+    input.startStation,
+    ...(input.transferStations ?? []),
+    input.endStation,
+  ];
+}
+
 export function createRouteGeometryKey(input: RouteGeometryInput) {
+  const bikeCoordinates = getBikeCoordinates(input);
   return [
     "v1",
     `foot:${coordinateKey(input.origin)}>${coordinateKey(input.startStation)}`,
-    `bike:${coordinateKey(input.startStation)}>${coordinateKey(input.endStation)}`,
+    `bike:${bikeCoordinates.map(coordinateKey).join(">")}`,
     `foot:${coordinateKey(input.endStation)}>${coordinateKey(input.destination)}`,
   ].join("|");
 }
@@ -117,10 +146,36 @@ function createDirectSegment(
   };
 }
 
+function createDirectBikeRoute(coordinates: Coordinates[]) {
+  const segments = coordinates.slice(0, -1).map((from, index) =>
+    createDirectSegment(from, coordinates[index + 1], "bike"),
+  );
+  const path = segments.flatMap((segment, index) =>
+    index === 0 ? segment.path : segment.path.slice(1),
+  );
+  const legs = segments.map(({ source, distanceMeters, durationSeconds }) => ({
+    source,
+    distanceMeters,
+    durationSeconds,
+  }));
+
+  return {
+    segment: {
+      path,
+      source: "direct" as const,
+      distanceMeters: legs.reduce((total, leg) => total + leg.distanceMeters, 0),
+      durationSeconds: legs.reduce((total, leg) => total + leg.durationSeconds, 0),
+    },
+    legs,
+  };
+}
+
 export function createDirectRouteGeometry(input: RouteGeometryInput): RouteGeometry {
+  const directBikeRoute = createDirectBikeRoute(getBikeCoordinates(input));
   return {
     walkTo: createDirectSegment(input.origin, input.startStation, "foot"),
-    bike: createDirectSegment(input.startStation, input.endStation, "bike"),
+    bike: directBikeRoute.segment,
+    bikeLegs: directBikeRoute.legs,
     walkFrom: createDirectSegment(input.endStation, input.destination, "foot"),
   };
 }
@@ -144,9 +199,9 @@ function scheduleRequest<T>(request: () => Promise<T>) {
   return scheduled;
 }
 
-function buildRouteUrl(profile: RouteProfile, from: Coordinates, to: Coordinates) {
+function buildRouteUrl(profile: RouteProfile, routeCoordinates: Coordinates[]) {
   const endpoint = profile === "foot" ? "routed-foot" : "routed-bike";
-  const coordinates = [from, to]
+  const coordinates = routeCoordinates
     .map(([latitude, longitude]) => `${longitude.toFixed(6)},${latitude.toFixed(6)}`)
     .join(";");
   const query = new URLSearchParams({
@@ -211,6 +266,39 @@ function attachRequestedEndpoints(
   return connected;
 }
 
+function attachRequestedWaypoints(
+  path: Coordinates[],
+  requestedCoordinates: Coordinates[],
+) {
+  const connected = attachRequestedEndpoints(
+    path,
+    requestedCoordinates[0],
+    requestedCoordinates[requestedCoordinates.length - 1],
+  );
+  let searchStartIndex = 1;
+
+  for (const requested of requestedCoordinates.slice(1, -1)) {
+    let closestIndex = searchStartIndex;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (let index = searchStartIndex; index < connected.length - 1; index += 1) {
+      const distance = distanceMeters(requested, connected[index]);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    }
+
+    if (closestDistance <= 1) {
+      connected[closestIndex] = [requested[0], requested[1]];
+    } else {
+      connected.splice(closestIndex, 0, [requested[0], requested[1]]);
+    }
+    searchStartIndex = closestIndex + 1;
+  }
+
+  return connected;
+}
+
 function shouldUseDirectCorrection(
   profile: RouteProfile,
   from: Coordinates,
@@ -236,15 +324,28 @@ function shouldUseDirectCorrection(
   return excessiveShortWalk || excessiveSnap;
 }
 
-async function requestOsrmSegment(
+type OsrmRouteResult = {
+  route: OsrmRoute;
+  routeDistance: number;
+  durationSeconds: number;
+  path: Coordinates[];
+  waypoints: OsrmWaypoint[];
+};
+
+async function requestOsrmRoute(
   profile: RouteProfile,
-  from: Coordinates,
-  to: Coordinates,
-): Promise<RouteSegment> {
-  if (!isCoordinates(from) || !isCoordinates(to)) {
+  coordinates: Coordinates[],
+): Promise<OsrmRouteResult> {
+  if (coordinates.length < 2 || coordinates.some((coordinate) => !isCoordinates(coordinate))) {
     throw new Error("Route coordinates are invalid.");
   }
-  if (distanceMeters(from, to) > MAX_DIRECT_DISTANCE_METERS) {
+  if (
+    coordinates
+      .slice(0, -1)
+      .some((coordinate, index) =>
+        distanceMeters(coordinate, coordinates[index + 1]) > MAX_DIRECT_DISTANCE_METERS,
+      )
+  ) {
     throw new Error("Route is outside the prototype service area.");
   }
 
@@ -252,7 +353,7 @@ async function requestOsrmSegment(
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      return await fetch(buildRouteUrl(profile, from, to), {
+      return await fetch(buildRouteUrl(profile, coordinates), {
         headers: { Accept: "application/json" },
         signal: controller.signal,
       });
@@ -275,15 +376,85 @@ async function requestOsrmSegment(
     ? (payload.waypoints as OsrmWaypoint[])
     : [];
 
+  return {
+    route,
+    routeDistance,
+    durationSeconds,
+    path: parsePath(route),
+    waypoints,
+  };
+}
+
+async function requestOsrmSegment(
+  profile: RouteProfile,
+  from: Coordinates,
+  to: Coordinates,
+): Promise<RouteSegment> {
+  const { routeDistance, durationSeconds, path, waypoints } = await requestOsrmRoute(
+    profile,
+    [from, to],
+  );
+
   if (shouldUseDirectCorrection(profile, from, to, routeDistance, waypoints)) {
     return createDirectSegment(from, to, profile);
   }
 
   return {
-    path: attachRequestedEndpoints(parsePath(route), from, to),
+    path: attachRequestedEndpoints(path, from, to),
     source: "osrm",
     distanceMeters: routeDistance,
     durationSeconds,
+  };
+}
+
+async function requestOsrmBikeRoute(
+  coordinates: Coordinates[],
+): Promise<{ segment: RouteSegment; legs: BikeRouteLeg[] }> {
+  const { route, routeDistance, path, waypoints } =
+    await requestOsrmRoute("bike", coordinates);
+  const from = coordinates[0];
+  const to = coordinates[coordinates.length - 1];
+
+  if (shouldUseDirectCorrection("bike", from, to, routeDistance, waypoints)) {
+    return createDirectBikeRoute(coordinates);
+  }
+  if (!Array.isArray(route.legs) || route.legs.length !== coordinates.length - 1) {
+    throw new Error("OSRM did not return the expected bicycle route legs.");
+  }
+
+  const snapDistances = coordinates.map((_, index) => {
+    const distance = waypoints[index]?.distance;
+    return typeof distance === "number" && Number.isFinite(distance) && distance > 0
+      ? distance
+      : 0;
+  });
+  const bicycleMetersPerSecond = 245 / 60;
+
+  const legs = route.legs.map((rawLeg, index) => {
+    if (!rawLeg || typeof rawLeg !== "object") {
+      throw new Error(`OSRM returned an invalid bicycle route leg ${index + 1}.`);
+    }
+    const leg = rawLeg as { distance?: unknown; duration?: unknown };
+    const connectorDistance = snapDistances[index] + snapDistances[index + 1];
+    return {
+      source: "osrm" as const,
+      distanceMeters:
+        readFiniteNumber(leg.distance, `leg ${index + 1} distance`) +
+        connectorDistance,
+      durationSeconds:
+        readFiniteNumber(leg.duration, `leg ${index + 1} duration`) +
+        connectorDistance / bicycleMetersPerSecond,
+    };
+  });
+
+  return {
+    segment: {
+      path: attachRequestedWaypoints(path, coordinates),
+      source: "osrm",
+      distanceMeters: legs.reduce((total, leg) => total + leg.distanceMeters, 0),
+      durationSeconds: legs.reduce((total, leg) => total + leg.durationSeconds, 0),
+    },
+    legs,
   };
 }
 
@@ -318,47 +489,65 @@ function loadSegment(profile: RouteProfile, from: Coordinates, to: Coordinates) 
   return pending;
 }
 
+function rememberBikeRoute(
+  key: string,
+  route: { segment: RouteSegment; legs: BikeRouteLeg[] },
+) {
+  if (resolvedBikeRouteCache.has(key)) resolvedBikeRouteCache.delete(key);
+  resolvedBikeRouteCache.set(key, route);
+  while (resolvedBikeRouteCache.size > SEGMENT_CACHE_LIMIT) {
+    const oldestKey = resolvedBikeRouteCache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    resolvedBikeRouteCache.delete(oldestKey);
+  }
+}
+
+function loadBikeRoute(coordinates: Coordinates[]) {
+  const key = bikeRouteKey(coordinates);
+  const resolved = resolvedBikeRouteCache.get(key);
+  if (resolved) {
+    rememberBikeRoute(key, resolved);
+    return Promise.resolve(resolved);
+  }
+
+  const inFlight = inFlightBikeRouteCache.get(key);
+  if (inFlight) return inFlight;
+
+  const pending = requestOsrmBikeRoute(coordinates)
+    .then((route) => {
+      rememberBikeRoute(key, route);
+      return route;
+    })
+    .finally(() => inFlightBikeRouteCache.delete(key));
+  inFlightBikeRouteCache.set(key, pending);
+  return pending;
+}
+
 export async function loadRouteGeometry(
   input: RouteGeometryInput,
 ): Promise<RouteGeometry> {
   const directGeometry = createDirectRouteGeometry(input);
-  const segmentRequests: Array<{
-    key: keyof RouteGeometry;
-    profile: RouteProfile;
-    from: Coordinates;
-    to: Coordinates;
-  }> = [
-    {
-      key: "walkTo",
-      profile: "foot",
-      from: input.origin,
-      to: input.startStation,
-    },
-    {
-      key: "bike",
-      profile: "bike",
-      from: input.startStation,
-      to: input.endStation,
-    },
-    {
-      key: "walkFrom",
-      profile: "foot",
-      from: input.endStation,
-      to: input.destination,
-    },
-  ];
   const result: RouteGeometry = { ...directGeometry };
 
-  for (const segmentRequest of segmentRequests) {
-    try {
-      result[segmentRequest.key] = await loadSegment(
-        segmentRequest.profile,
-        segmentRequest.from,
-        segmentRequest.to,
-      );
-    } catch {
-      result[segmentRequest.key] = directGeometry[segmentRequest.key];
-    }
+  try {
+    result.walkTo = await loadSegment("foot", input.origin, input.startStation);
+  } catch {
+    result.walkTo = directGeometry.walkTo;
+  }
+
+  try {
+    const bikeRoute = await loadBikeRoute(getBikeCoordinates(input));
+    result.bike = bikeRoute.segment;
+    result.bikeLegs = bikeRoute.legs;
+  } catch {
+    result.bike = directGeometry.bike;
+    result.bikeLegs = directGeometry.bikeLegs;
+  }
+
+  try {
+    result.walkFrom = await loadSegment("foot", input.endStation, input.destination);
+  } catch {
+    result.walkFrom = directGeometry.walkFrom;
   }
 
   if ([result.walkTo, result.bike, result.walkFrom].every(({ source }) => source === "direct")) {

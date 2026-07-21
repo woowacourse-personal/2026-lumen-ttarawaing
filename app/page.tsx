@@ -3,6 +3,7 @@
 import {
   ArrowDownUp,
   ArrowRight,
+  AlertTriangle,
   Bike,
   Check,
   ChevronDown,
@@ -14,9 +15,17 @@ import {
   MapPin,
   Navigation,
   Search,
+  RefreshCw,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   LayerGroup,
   Map as LeafletMap,
@@ -32,6 +41,17 @@ import {
   createRouteGeometryKey,
   loadRouteGeometry,
 } from "./route-geometry";
+import {
+  DEFAULT_PASS_TYPE,
+  PASS_OPTIONS,
+  PASS_TYPE_STORAGE_KEY,
+  TRANSFER_STOP_OVERHEAD_MINUTES,
+  areBikeLegsWithinPassLimit,
+  getPassSafeRideMinutes,
+  initialMinimumStopCount,
+  isPassType,
+  selectRouteCorridorStations,
+} from "./pass-planning";
 import stationCatalog from "./data/seoul-bike-stations.json";
 import type {
   KakaoCustomOverlay,
@@ -41,10 +61,12 @@ import type {
   KakaoSdk,
 } from "./kakao-maps";
 import type {
+  BikeRouteLeg,
   Coordinates,
   RouteGeometry,
   RouteGeometryInput,
 } from "./route-geometry";
+import type { PassType } from "./pass-planning";
 
 type Place = {
   id: string;
@@ -85,15 +107,33 @@ type RouteHistoryItem = {
   destination: Place;
 };
 
+type PassRouteStatus =
+  | "loading"
+  | "not-needed"
+  | "recommended"
+  | "unavailable";
+
+type RouteRecommendation = {
+  key: string;
+  plan: RoutePlan;
+  geometry: RouteGeometry;
+  geometryStatus: RouteGeometryStatus;
+  transferStops: Station[];
+  bikeLegs: BikeRouteLeg[];
+  passStatus: PassRouteStatus;
+};
+
 type MapFocusTarget = "origin" | "startStation" | "endStation" | "destination";
 
 type MapFocusRequest = {
-  target: MapFocusTarget;
+  coordinates: Coordinates;
   requestId: number;
 };
 
 const ROUTE_FOCUS_LEAFLET_ZOOM = 18;
 const ROUTE_FOCUS_KAKAO_LEVEL = 2;
+const MAX_TRANSFER_COMBINATIONS_PER_STOP_COUNT = 4;
+const KAKAO_MAX_WAYPOINTS = 5;
 
 const PLACES: Place[] = [
   {
@@ -196,6 +236,8 @@ const STATIONS: Station[] = stationCatalog.stations.map((station) => ({
   coordinates: [station.latitude, station.longitude],
   bikes: null,
 }));
+const EMPTY_STATIONS: Station[] = [];
+const EMPTY_BIKE_LEGS: BikeRouteLeg[] = [];
 
 const BIKE_SEOUL_REALTIME_URL =
   "https://www.bikeseoul.com/app/station/getStationRealtimeStatus.do";
@@ -505,20 +547,79 @@ function buildPlan(
   };
 }
 
+function applyRouteGeometryToPlan(
+  plan: RoutePlan,
+  geometry: RouteGeometry,
+  transferStopCount: number,
+): RoutePlan {
+  const walkToMeters = Math.round(geometry.walkTo.distanceMeters);
+  const bikeMeters = Math.round(geometry.bike.distanceMeters);
+  const walkFromMeters = Math.round(geometry.walkFrom.distanceMeters);
+  const walkToMinutes = Math.max(1, Math.ceil(geometry.walkTo.durationSeconds / 60));
+  const bikeMinutes = Math.max(1, Math.ceil(geometry.bike.durationSeconds / 60));
+  const walkFromMinutes = Math.max(
+    1,
+    Math.ceil(geometry.walkFrom.durationSeconds / 60),
+  );
+  const transferMinutes = transferStopCount * TRANSFER_STOP_OVERHEAD_MINUTES;
+
+  return {
+    ...plan,
+    walkToMeters,
+    bikeMeters,
+    walkFromMeters,
+    walkToMinutes,
+    bikeMinutes,
+    walkFromMinutes,
+    totalMinutes:
+      walkToMinutes + bikeMinutes + walkFromMinutes + transferMinutes,
+    totalMeters: walkToMeters + bikeMeters + walkFromMeters,
+    calories: Math.round(
+      bikeMinutes * 6.2 + (walkToMinutes + walkFromMinutes) * 3.1,
+    ),
+  };
+}
+
 function buildKakaoRoutePoint(point: { name: string; coordinates: Coordinates }) {
   const [latitude, longitude] = point.coordinates;
   return `${encodeURIComponent(point.name)},${latitude},${longitude}`;
 }
 
-function buildKakaoBicycleRouteUrl(plan: RoutePlan) {
-  const points = [
+function getKakaoRoutePoints(plan: RoutePlan, transferStops: Station[]) {
+  return [
     plan.origin,
     plan.startStation,
+    ...transferStops,
     plan.endStation,
     plan.destination,
-  ].map(buildKakaoRoutePoint);
+  ];
+}
 
-  return `https://map.kakao.com/link/by/bicycle/${points.join("/")}`;
+function splitKakaoRoutePoints<T>(points: T[]) {
+  const maximumPointsPerLink = KAKAO_MAX_WAYPOINTS + 2;
+  if (points.length < 2) return [];
+  if (points.length <= maximumPointsPerLink) return [points];
+
+  const groups: T[][] = [];
+  let startIndex = 0;
+  while (startIndex < points.length - 1) {
+    const group = points.slice(startIndex, startIndex + maximumPointsPerLink);
+    if (group.length < 2) break;
+    groups.push(group);
+    startIndex += group.length - 1;
+  }
+  return groups;
+}
+
+function buildKakaoBicycleRouteUrls(plan: RoutePlan, transferStops: Station[]) {
+  return splitKakaoRoutePoints(getKakaoRoutePoints(plan, transferStops)).map(
+    (points) =>
+      `https://map.kakao.com/link/by/bicycle/${points.map(buildKakaoRoutePoint).join("/")}`,
+  );
+}
+
+function getPassLabel(passType: PassType) {
+  return PASS_OPTIONS.find((option) => option.value === passType)?.label ?? "이용권";
 }
 
 function formatDistance(meters: number) {
@@ -639,12 +740,6 @@ function updateCurrentLocationHeading(
   }
 }
 
-type RouteGeometryState = {
-  key: string;
-  geometry: RouteGeometry;
-  status: RouteGeometryStatus;
-};
-
 function getRouteGeometryStatus(geometry: RouteGeometry): RouteGeometryStatus {
   const roadSegmentCount = [
     geometry.walkTo,
@@ -657,51 +752,183 @@ function getRouteGeometryStatus(geometry: RouteGeometry): RouteGeometryStatus {
   return "fallback";
 }
 
-function useRouteGeometry(plan: RoutePlan): RouteGeometryState {
-  const input = useMemo<RouteGeometryInput>(
-    () => ({
-      origin: plan.origin.coordinates,
-      startStation: plan.startStation.coordinates,
-      endStation: plan.endStation.coordinates,
-      destination: plan.destination.coordinates,
-    }),
-    [
-      plan.destination.coordinates,
-      plan.endStation.coordinates,
-      plan.origin.coordinates,
-      plan.startStation.coordinates,
-    ],
+function useRouteRecommendation(
+  basePlan: RoutePlan | null,
+  passType: PassType,
+  stations: Station[],
+): RouteRecommendation | null {
+  const baseInput = useMemo<RouteGeometryInput | null>(
+    () =>
+      basePlan
+        ? {
+            origin: basePlan.origin.coordinates,
+            startStation: basePlan.startStation.coordinates,
+            endStation: basePlan.endStation.coordinates,
+            destination: basePlan.destination.coordinates,
+          }
+        : null,
+    [basePlan],
   );
-  const key = useMemo(() => createRouteGeometryKey(input), [input]);
-  const directGeometry = useMemo(() => createDirectRouteGeometry(input), [input]);
-  const [state, setState] = useState<RouteGeometryState>(() => ({
-    key,
-    geometry: directGeometry,
-    status: "loading",
-  }));
+  const key = useMemo(
+    () =>
+      baseInput
+        ? `${createRouteGeometryKey(baseInput)}|pass:${passType}`
+        : "no-route",
+    [baseInput, passType],
+  );
+  const fallback = useMemo<RouteRecommendation | null>(() => {
+    if (!basePlan || !baseInput) return null;
+    const geometry = createDirectRouteGeometry(baseInput);
+    return {
+      key,
+      plan: basePlan,
+      geometry,
+      geometryStatus: "loading",
+      transferStops: [],
+      bikeLegs: geometry.bikeLegs,
+      passStatus: "loading",
+    };
+  }, [baseInput, basePlan, key]);
+  const [state, setState] = useState<RouteRecommendation | null>(fallback);
 
   useEffect(() => {
-    let active = true;
+    if (!basePlan || !baseInput || !fallback) {
+      return;
+    }
 
-    void loadRouteGeometry(input)
-      .then((geometry) => {
-        if (!active) return;
-        setState({ key, geometry, status: getRouteGeometryStatus(geometry) });
-      })
-      .catch(() => {
-        if (!active) return;
-        setState({ key, geometry: directGeometry, status: "fallback" });
+    let active = true;
+    const publish = (
+      geometry: RouteGeometry,
+      transferStops: Station[],
+      passStatus: PassRouteStatus,
+    ) => {
+      if (!active) return;
+      setState({
+        key,
+        plan: applyRouteGeometryToPlan(basePlan, geometry, transferStops.length),
+        geometry,
+        geometryStatus: getRouteGeometryStatus(geometry),
+        transferStops,
+        bikeLegs: geometry.bikeLegs,
+        passStatus,
       });
+    };
+
+    void (async () => {
+      try {
+        const baseGeometry = await loadRouteGeometry(baseInput);
+        if (!active) return;
+        const safeRideMinutes = getPassSafeRideMinutes(passType);
+
+        if (safeRideMinutes === null) {
+          publish(baseGeometry, [], "not-needed");
+          return;
+        }
+
+        if (baseGeometry.bike.source !== "osrm") {
+          publish(baseGeometry, [], "unavailable");
+          return;
+        }
+
+        const baseBikeLegMinutes = baseGeometry.bikeLegs.map(
+          (leg) => leg.durationSeconds / 60,
+        );
+        if (areBikeLegsWithinPassLimit(baseBikeLegMinutes, passType)) {
+          publish(baseGeometry, [], "not-needed");
+          return;
+        }
+
+        const initialStopCount = initialMinimumStopCount(
+          baseGeometry.bike.durationSeconds / 60,
+          passType,
+        );
+        const maximumStopCount = Math.min(8, Math.max(4, initialStopCount + 4));
+        const endpointStationIds = new Set([
+          basePlan.startStation.id,
+          basePlan.endStation.id,
+        ]);
+
+        for (
+          let stopCount = Math.max(1, initialStopCount);
+          stopCount <= maximumStopCount;
+          stopCount += 1
+        ) {
+          const exclusionQueue: Set<string>[] = [new Set(endpointStationIds)];
+          const seenExclusionSets = new Set([
+            [...endpointStationIds].sort().join(","),
+          ]);
+          const triedStationSequences = new Set<string>();
+          let combinationCount = 0;
+
+          while (
+            exclusionQueue.length &&
+            combinationCount < MAX_TRANSFER_COMBINATIONS_PER_STOP_COUNT
+          ) {
+            if (!active) return;
+            const excludedStationIds = exclusionQueue.shift() ?? endpointStationIds;
+            const transferStops = selectRouteCorridorStations({
+              routePath: baseGeometry.bike.path,
+              stations,
+              stopCount,
+              excludedStationIds,
+              stationPenaltyMeters: (station) =>
+                station.bikes === null ? 90 : station.bikes === 0 ? 25 : 0,
+            });
+            if (transferStops.length !== stopCount) continue;
+
+            const stationSequence = transferStops
+              .map((station) => station.id)
+              .join(">");
+            if (triedStationSequences.has(stationSequence)) continue;
+            triedStationSequences.add(stationSequence);
+            combinationCount += 1;
+
+            for (const station of transferStops) {
+              const nextExclusions = new Set(excludedStationIds);
+              nextExclusions.add(station.id);
+              const exclusionKey = [...nextExclusions].sort().join(",");
+              if (!seenExclusionSets.has(exclusionKey)) {
+                seenExclusionSets.add(exclusionKey);
+                exclusionQueue.push(nextExclusions);
+              }
+            }
+
+            const geometry = await loadRouteGeometry({
+              ...baseInput,
+              transferStations: transferStops.map((station) => station.coordinates),
+            });
+            if (!active) return;
+            const bikeLegMinutes = geometry.bikeLegs.map(
+              (leg) => leg.durationSeconds / 60,
+            );
+            const allRoadLegs =
+              geometry.bike.source === "osrm" &&
+              geometry.bikeLegs.every((leg) => leg.source === "osrm");
+            if (allRoadLegs && areBikeLegsWithinPassLimit(bikeLegMinutes, passType)) {
+              publish(geometry, transferStops, "recommended");
+              return;
+            }
+          }
+        }
+
+        publish(baseGeometry, [], "unavailable");
+      } catch {
+        if (!active) return;
+        setState({
+          ...fallback,
+          passStatus: passType === "none" ? "not-needed" : "unavailable",
+          geometryStatus: "fallback",
+        });
+      }
+    })();
 
     return () => {
       active = false;
     };
-  }, [directGeometry, input, key]);
+  }, [baseInput, basePlan, fallback, key, passType, stations]);
 
-  if (state.key !== key) {
-    return { key, geometry: directGeometry, status: "loading" };
-  }
-  return state;
+  if (!fallback) return null;
+  return state?.key === key ? state : fallback;
 }
 
 type PlaceFieldProps = {
@@ -997,6 +1224,7 @@ function LeafletRouteMap({
   plan,
   geometry,
   geometryStatus,
+  transferStops,
   focusRequest,
   userLocation,
   userHeading,
@@ -1008,6 +1236,7 @@ function LeafletRouteMap({
   plan: RoutePlan;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
+  transferStops: Station[];
   focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
   userHeading: number | null;
@@ -1074,7 +1303,7 @@ function LeafletRouteMap({
         const requestedFocus = focusRequestRef.current;
         if (requestedFocus) {
           mapRef.current.flyTo(
-            plan[requestedFocus.target].coordinates,
+            requestedFocus.coordinates,
             ROUTE_FOCUS_LEAFLET_ZOOM,
             { duration: 0.45 },
           );
@@ -1083,6 +1312,7 @@ function LeafletRouteMap({
         const bounds = L.latLngBounds([
           plan.origin.coordinates,
           plan.startStation.coordinates,
+          ...transferStops.map((station) => station.coordinates),
           plan.endStation.coordinates,
           plan.destination.coordinates,
         ]);
@@ -1158,6 +1388,14 @@ function LeafletRouteMap({
         "bike-marker",
         plan.startStation.name,
       );
+      transferStops.forEach((station, index) => {
+        marker(
+          station.coordinates,
+          `경유${index + 1}`,
+          "transfer-marker",
+          `${station.name} · 중간 반납·재대여`,
+        );
+      });
       marker(
         plan.endStation.coordinates,
         "반납",
@@ -1197,13 +1435,14 @@ function LeafletRouteMap({
         ...walkFrom,
         plan.origin.coordinates,
         plan.startStation.coordinates,
+        ...transferStops.map((station) => station.coordinates),
         plan.endStation.coordinates,
         plan.destination.coordinates,
       ]);
       const requestedFocus = focusRequestRef.current;
       if (requestedFocus) {
         mapRef.current.flyTo(
-          plan[requestedFocus.target].coordinates,
+          requestedFocus.coordinates,
           ROUTE_FOCUS_LEAFLET_ZOOM,
           { duration: 0.45 },
         );
@@ -1219,16 +1458,16 @@ function LeafletRouteMap({
     return () => {
       active = false;
     };
-  }, [geometry, geometryStatus, plan, ready]);
+  }, [geometry, geometryStatus, plan, ready, transferStops]);
 
   useEffect(() => {
     if (!ready || !mapRef.current || !focusRequest) return;
     mapRef.current.flyTo(
-      plan[focusRequest.target].coordinates,
+      focusRequest.coordinates,
       ROUTE_FOCUS_LEAFLET_ZOOM,
       { duration: 0.45 },
     );
-  }, [focusRequest, plan, ready]);
+  }, [focusRequest, ready]);
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
@@ -1311,6 +1550,7 @@ function KakaoRouteMap({
   plan,
   geometry,
   geometryStatus,
+  transferStops,
   focusRequest,
   userLocation,
   userHeading,
@@ -1323,6 +1563,7 @@ function KakaoRouteMap({
   plan: RoutePlan;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
+  transferStops: Station[];
   focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
   userHeading: number | null;
@@ -1408,6 +1649,7 @@ function KakaoRouteMap({
       [
         plan.origin.coordinates,
         plan.startStation.coordinates,
+        ...transferStops.map((station) => station.coordinates),
         plan.endStation.coordinates,
         plan.destination.coordinates,
       ].forEach((coordinates) => bounds.extend(toLatLng(coordinates)));
@@ -1415,7 +1657,7 @@ function KakaoRouteMap({
         map.relayout();
         const requestedFocus = focusRequestRef.current;
         if (requestedFocus) {
-          const position = toLatLng(plan[requestedFocus.target].coordinates);
+          const position = toLatLng(requestedFocus.coordinates);
           map.setLevel(ROUTE_FOCUS_KAKAO_LEVEL);
           map.panTo(position);
         } else {
@@ -1501,6 +1743,14 @@ function KakaoRouteMap({
 
     addMarker(plan.origin.coordinates, "출발", "origin-marker", plan.origin.name);
     addMarker(plan.startStation.coordinates, "대여", "bike-marker", plan.startStation.name);
+    transferStops.forEach((station, index) => {
+      addMarker(
+        station.coordinates,
+        `경유${index + 1}`,
+        "transfer-marker",
+        `${station.name} · 중간 반납·재대여`,
+      );
+    });
     addMarker(plan.endStation.coordinates, "반납", "return-marker", plan.endStation.name);
     addMarker(
       plan.destination.coordinates,
@@ -1538,6 +1788,7 @@ function KakaoRouteMap({
       ...walkFrom,
       plan.origin.coordinates,
       plan.startStation.coordinates,
+      ...transferStops.map((station) => station.coordinates),
       plan.endStation.coordinates,
       plan.destination.coordinates,
     ].forEach((coordinates) => bounds.extend(toLatLng(coordinates)));
@@ -1546,7 +1797,7 @@ function KakaoRouteMap({
       map.relayout();
       const requestedFocus = focusRequestRef.current;
       if (requestedFocus) {
-        const position = toLatLng(plan[requestedFocus.target].coordinates);
+        const position = toLatLng(requestedFocus.coordinates);
         map.setLevel(ROUTE_FOCUS_KAKAO_LEVEL);
         map.panTo(position);
       } else {
@@ -1558,20 +1809,20 @@ function KakaoRouteMap({
       window.cancelAnimationFrame(animationFrame);
       clearMapObjects();
     };
-  }, [clearMapObjects, geometry, geometryStatus, plan, ready]);
+  }, [clearMapObjects, geometry, geometryStatus, plan, ready, transferStops]);
 
   useEffect(() => {
     const sdk = sdkRef.current;
     const map = mapRef.current;
     if (!ready || !sdk || !map || !focusRequest) return;
-    const coordinates = plan[focusRequest.target].coordinates;
+    const coordinates = focusRequest.coordinates;
     const position = new sdk.maps.LatLng(
       coordinates[0],
       coordinates[1],
     );
     map.setLevel(ROUTE_FOCUS_KAKAO_LEVEL);
     map.panTo(position);
-  }, [focusRequest, plan, ready]);
+  }, [focusRequest, ready]);
 
   useEffect(() => {
     const sdk = sdkRef.current;
@@ -1642,6 +1893,9 @@ function KakaoRouteMap({
 
 function RouteMap({
   plan,
+  geometry,
+  geometryStatus,
+  transferStops,
   focusRequest,
   userLocation,
   userHeading,
@@ -1651,6 +1905,9 @@ function RouteMap({
   onLocate,
 }: {
   plan: RoutePlan;
+  geometry: RouteGeometry;
+  geometryStatus: RouteGeometryStatus;
+  transferStops: Station[];
   focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
   userHeading: number | null;
@@ -1661,7 +1918,6 @@ function RouteMap({
 }) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
   const useLeafletFallback = useCallback(() => setProvider("leaflet"), []);
-  const { geometry, status: geometryStatus } = useRouteGeometry(plan);
 
   useEffect(() => {
     let active = true;
@@ -1683,6 +1939,7 @@ function RouteMap({
         plan={plan}
         geometry={geometry}
         geometryStatus={geometryStatus}
+        transferStops={transferStops}
         focusRequest={focusRequest}
         userLocation={userLocation}
         userHeading={userHeading}
@@ -1700,6 +1957,7 @@ function RouteMap({
         plan={plan}
         geometry={geometry}
         geometryStatus={geometryStatus}
+        transferStops={transferStops}
         focusRequest={focusRequest}
         userLocation={userLocation}
         userHeading={userHeading}
@@ -1737,6 +1995,7 @@ export default function Home() {
     destination: Place;
   } | null>(null);
   const [routeHistory, setRouteHistory] = useState<RouteHistoryItem[]>([]);
+  const [passType, setPassType] = useState<PassType>(DEFAULT_PASS_TYPE);
   const [selectedEndStationId, setSelectedEndStationId] = useState<string>();
   const [alternativesOpen, setAlternativesOpen] = useState(false);
   const [routeDetailsOpen, setRouteDetailsOpen] = useState(true);
@@ -1774,6 +2033,8 @@ export default function Home() {
         setRouteHistory(
           parseRouteHistory(window.localStorage.getItem(ROUTE_HISTORY_STORAGE_KEY)),
         );
+        const storedPassType = window.localStorage.getItem(PASS_TYPE_STORAGE_KEY);
+        if (isPassType(storedPassType)) setPassType(storedPassType);
       } catch {
         setRouteHistory([]);
       }
@@ -1813,7 +2074,7 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
-  const plan = useMemo(
+  const basePlan = useMemo(
     () =>
       committedRoute
         ? buildPlan(
@@ -1825,10 +2086,35 @@ export default function Home() {
         : null,
     [committedRoute, selectedEndStationId, stations],
   );
-  const kakaoRouteUrl = useMemo(
-    () => (plan ? buildKakaoBicycleRouteUrl(plan) : ""),
-    [plan],
+  const routeRecommendation = useRouteRecommendation(basePlan, passType, stations);
+  const plan = routeRecommendation?.plan ?? null;
+  const transferStops = routeRecommendation?.transferStops ?? EMPTY_STATIONS;
+  const bikeLegs = routeRecommendation?.bikeLegs ?? EMPTY_BIKE_LEGS;
+  const passRouteStatus = routeRecommendation?.passStatus ?? "loading";
+  const kakaoRoutePoints = useMemo(
+    () => (plan ? getKakaoRoutePoints(plan, transferStops) : []),
+    [plan, transferStops],
   );
+  const kakaoRoutePointGroups = useMemo(
+    () => splitKakaoRoutePoints(kakaoRoutePoints),
+    [kakaoRoutePoints],
+  );
+  const kakaoRouteUrls = useMemo(
+    () =>
+      plan && passRouteStatus !== "loading"
+        ? buildKakaoBicycleRouteUrls(plan, transferStops)
+        : [],
+    [passRouteStatus, plan, transferStops],
+  );
+
+  const choosePassType = useCallback((nextPassType: PassType) => {
+    setPassType(nextPassType);
+    try {
+      window.localStorage.setItem(PASS_TYPE_STORAGE_KEY, nextPassType);
+    } catch {
+      // The current session still uses the selected pass when storage is unavailable.
+    }
+  }, []);
 
   const rememberRoute = useCallback((route: RouteHistoryItem) => {
     if (
@@ -2174,10 +2460,13 @@ export default function Home() {
   ]);
 
   const focusMapPoint = useCallback(
-    (target: MapFocusTarget) => {
+    (target: MapFocusTarget | { coordinates: Coordinates }) => {
+      const coordinates =
+        typeof target === "string" ? plan?.[target].coordinates : target.coordinates;
+      if (!coordinates) return;
       stopMapLocationTracking(true);
       setMapFocusRequest((currentRequest) => ({
-        target,
+        coordinates: [coordinates[0], coordinates[1]],
         requestId: (currentRequest?.requestId ?? 0) + 1,
       }));
       if (window.matchMedia("(max-width: 900px)").matches) {
@@ -2192,7 +2481,7 @@ export default function Home() {
         });
       }
     },
-    [stopMapLocationTracking],
+    [plan, stopMapLocationTracking],
   );
 
   const resetRoute = () => {
@@ -2281,6 +2570,31 @@ export default function Home() {
                   />
                 </div>
               </div>
+
+              <fieldset className="pass-selector" aria-describedby="pass-selector-help">
+                <legend>현재 이용권</legend>
+                <div className="pass-options">
+                  {PASS_OPTIONS.map((option) => (
+                    <label
+                      className={`pass-option${passType === option.value ? " is-selected" : ""}`}
+                      key={option.value}
+                    >
+                      <input
+                        type="radio"
+                        name="bike-pass"
+                        value={option.value}
+                        checked={passType === option.value}
+                        onChange={() => choosePassType(option.value)}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <p id="pass-selector-help">
+                  기본 이용시간보다 5분 여유를 두고 중간 반납·재대여 대여소를
+                  찾아드려요.
+                </p>
+              </fieldset>
 
               {errorMessage ? (
                 <p className="form-error" role="alert">
@@ -2375,6 +2689,48 @@ export default function Home() {
                 </div>
               </div>
 
+              {passRouteStatus === "loading" ? (
+                <div className="pass-route-status" role="status" aria-live="polite">
+                  <span className="loading-wheel" aria-hidden="true" />
+                  실제 도로 경로와 이용권에 맞는 중간 대여소를 찾고 있어요.
+                </div>
+              ) : passRouteStatus === "recommended" ? (
+                <div className="pass-route-notice" role="status">
+                  <RefreshCw size={16} aria-hidden="true" />
+                  <div>
+                    <strong>
+                      {getPassLabel(passType)}에 맞춰 중간 반납 {transferStops.length}회를
+                      추천해요.
+                    </strong>
+                    <p>
+                      각 자전거 구간은 {getPassSafeRideMinutes(passType)}분 이내로
+                      확인했고, 반납·재대여 시간은 회당 약{" "}
+                      {`${TRANSFER_STOP_OVERHEAD_MINUTES}분`}을 총 소요시간에 포함했어요.
+                    </p>
+                    <p>
+                      반납 완료 알림을 확인한 뒤 다시 대여해 주세요. 실시간 대여소
+                      현황은 이동 중 바뀔 수 있어요.
+                    </p>
+                  </div>
+                </div>
+              ) : passRouteStatus === "unavailable" ? (
+                <div className="pass-route-notice is-warning" role="alert">
+                  <AlertTriangle size={16} aria-hidden="true" />
+                  <div>
+                    <strong>이용권 시간 안에 안전하게 나눌 대여소를 찾지 못했어요.</strong>
+                    <p>
+                      이 경로를 이용권에 안전한 경로라고 안내할 수 없어요. 출발 전
+                      따릉이와 지도 앱에서 경로·운영 현황을 다시 확인해 주세요.
+                    </p>
+                  </div>
+                </div>
+              ) : passType !== "none" ? (
+                <p className="pass-route-safe" role="status">
+                  {getPassLabel(passType)} 기준 {getPassSafeRideMinutes(passType)}분의 안전
+                  이용시간 안이라 중간 반납이 필요하지 않아요.
+                </p>
+              ) : null}
+
               <button
                 className="details-toggle"
                 type="button"
@@ -2411,7 +2767,13 @@ export default function Home() {
                     </span>
                     <div>
                       <strong>걸어서 {plan.walkToMinutes}분</strong>
-                      <small>{formatDistance(plan.walkToMeters)} · 직선거리 기반 예상</small>
+                      <small>
+                        {formatDistance(plan.walkToMeters)} · {passRouteStatus === "loading"
+                          ? "경로 계산 중"
+                          : routeRecommendation?.geometry.walkTo.source === "osrm"
+                            ? "도로 경로 기준"
+                            : "직선거리 기반 예상"}
+                      </small>
                     </div>
                   </li>
                   <li className="timeline-station">
@@ -2462,17 +2824,70 @@ export default function Home() {
                       ) : null}
                     </div>
                   </li>
-                  <li className="timeline-segment bike-segment">
-                    <span className="segment-icon">
-                      <Bike size={16} aria-hidden="true" />
-                    </span>
-                    <div>
-                      <strong>따릉이로 {plan.bikeMinutes}분</strong>
-                      <small>{formatDistance(plan.bikeMeters)} · 예상 이동 거리</small>
-                    </div>
-                  </li>
+                  {bikeLegs.map((leg, index) => {
+                    const transferStation = transferStops[index];
+                    const legMinutes = Math.max(
+                      1,
+                      Math.ceil(leg.durationSeconds / 60),
+                    );
+                    return (
+                      <Fragment key={`bike-leg-${index}-${transferStation?.id ?? "end"}`}>
+                        <li className="timeline-segment bike-segment">
+                          <span className="segment-icon">
+                            <Bike size={16} aria-hidden="true" />
+                          </span>
+                          <div>
+                            <strong>
+                              {transferStops.length
+                                ? `따릉이 구간 ${index + 1} · ${legMinutes}분`
+                                : `따릉이로 ${legMinutes}분`}
+                            </strong>
+                            <small>
+                              {formatDistance(Math.round(leg.distanceMeters))} · {passRouteStatus === "loading"
+                                ? "경로 계산 중"
+                                : leg.source === "osrm"
+                                  ? "도로 경로 기준"
+                                  : "직선거리 기반 예상"}
+                            </small>
+                          </div>
+                        </li>
+                        {transferStation ? (
+                          <li className="timeline-station transfer-station">
+                            <span className="station-number">{index + 2}</span>
+                            <div className="station-card-copy">
+                              <button
+                                className="station-focus-button"
+                                type="button"
+                                aria-label={`${transferStation.name} 중간 반납·재대여 대여소를 지도에서 보기`}
+                                onClick={() => focusMapPoint(transferStation)}
+                              >
+                                <span className="station-title-line">
+                                  <span className="station-title-copy">
+                                    <small>
+                                      중간 반납·재대여 대여소
+                                      <span className="best-badge transfer-badge">
+                                        {getPassLabel(passType)}
+                                      </span>
+                                    </small>
+                                    <strong>{transferStation.name}</strong>
+                                  </span>
+                                </span>
+                                <span className="station-address">
+                                  {transferStation.address}
+                                </span>
+                              </button>
+                              <p className="transfer-instruction">
+                                <RefreshCw size={12} aria-hidden="true" />
+                                반납 완료 알림을 확인한 뒤 다시 대여해 주세요.
+                              </p>
+                            </div>
+                          </li>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
                   <li className="timeline-station return-station">
-                    <span className="station-number">2</span>
+                    <span className="station-number">{transferStops.length + 2}</span>
                     <div className="station-card-copy">
                       <button
                         className="station-focus-button"
@@ -2573,13 +2988,16 @@ export default function Home() {
                   장소 검색은 <strong>카카오맵 실제 데이터</strong>, 대여소 위치는
                   서울시 공식 데이터와 서울자전거 운영 목록(
                   {STATIONS.length.toLocaleString("ko-KR")}곳)을 사용해요. {" "}
+                  이용권 경유 대여소는 실제 자전거 도로 경로와 구간별 예상 시간을
+                  기준으로 추천해요. {" "}
                   {liveBikeStatus === "ready"
                     ? "대여 가능 자전거 수는 실시간 현황을 반영했어요."
                     : liveBikeStatus === "loading"
                       ? "대여 가능 자전거 수를 확인하고 있어요."
                       : "실시간 수량 연결이 지연되어 최근 운영 목록을 사용 중이에요."}
-                  {" "}반납 가능 여부와 경로 시간은 실제 출발 전 따릉이·지도 앱에서
-                  다시 확인해 주세요.
+                  {" "}실시간 수량과 임시 운영 상태는 이동 중 바뀔 수 있어요. 반납
+                  가능 여부와 경로 시간은 실제 출발 전 따릉이·지도 앱에서 다시 확인해
+                  주세요.
                   {" "}
                   <a
                     href={stationCatalog.source.url}
@@ -2591,34 +3009,54 @@ export default function Home() {
                 </span>
               </div>
 
-              <a
-                className="kakao-link"
-                href={kakaoRouteUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="출발지, 대여소, 반납 대여소, 도착지를 포함해 카카오맵 자전거 길찾기에서 열기"
-              >
-                <span className="kakao-link-icon">
-                  <Navigation size={16} fill="currentColor" aria-hidden="true" />
-                </span>
-                <span className="kakao-link-copy">
-                  <strong>카카오맵에서 이어보기</strong>
-                  <small>출발 · 대여 · 반납 · 도착 4개 지점 자동 입력</small>
-                </span>
-                <ExternalLink className="kakao-link-arrow" size={15} aria-hidden="true" />
-              </a>
-              <div className="kakao-route-preview" aria-label="카카오맵에 전달할 경로">
-                <span>{plan.origin.name}</span>
-                <ArrowRight size={11} aria-hidden="true" />
-                <span>{plan.startStation.name}</span>
-                <ArrowRight size={11} aria-hidden="true" />
-                <span>{plan.endStation.name}</span>
-                <ArrowRight size={11} aria-hidden="true" />
-                <span>{plan.destination.name}</span>
-              </div>
-              <p className="kakao-route-note">
-                카카오맵에서는 네 지점을 하나의 자전거 경로로 열어요. 첫·마지막 도보 구간은 따라와잉 안내를 확인해 주세요.
-              </p>
+              {passRouteStatus !== "loading" ? (
+                <>
+                  {kakaoRouteUrls.map((url, index) => (
+                    <a
+                      className="kakao-link"
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      key={url}
+                      aria-label={`카카오맵 자전거 길찾기 ${index + 1}/${kakaoRouteUrls.length} 구간 열기`}
+                    >
+                      <span className="kakao-link-icon">
+                        <Navigation size={16} fill="currentColor" aria-hidden="true" />
+                      </span>
+                      <span className="kakao-link-copy">
+                        <strong>
+                          카카오맵에서 이어보기
+                          {kakaoRouteUrls.length > 1
+                            ? ` ${index + 1}/${kakaoRouteUrls.length}`
+                            : ""}
+                        </strong>
+                        <small>
+                          {kakaoRoutePointGroups[index]?.length ?? 0}개 지점 자동 입력
+                        </small>
+                      </span>
+                      <ExternalLink
+                        className="kakao-link-arrow"
+                        size={15}
+                        aria-hidden="true"
+                      />
+                    </a>
+                  ))}
+                  <div className="kakao-route-preview" aria-label="카카오맵에 전달할 경로">
+                    {kakaoRoutePoints.map((point, index) => (
+                      <Fragment key={`${point.id}-${index}`}>
+                        {index ? <ArrowRight size={11} aria-hidden="true" /> : null}
+                        <span>{point.name}</span>
+                      </Fragment>
+                    ))}
+                  </div>
+                  <p className="kakao-route-note">
+                    {kakaoRouteUrls.length > 1
+                      ? `카카오맵 경유지 제한에 맞춰 ${kakaoRouteUrls.length}개 구간으로 나눴어요. 버튼을 순서대로 열어 주세요.`
+                      : "카카오맵에서는 모든 경유 지점을 하나의 자전거 경로로 열어요."}
+                    {" "}첫·마지막 도보 구간은 따라와잉 안내를 확인해 주세요.
+                  </p>
+                </>
+              ) : null}
               </section>
             ) : null}
           </div>
@@ -2629,9 +3067,12 @@ export default function Home() {
           className={`map-panel${plan ? "" : " is-empty"}`}
           aria-label={plan ? "경로 지도" : "경로 검색 안내"}
         >
-          {plan ? (
+          {plan && routeRecommendation ? (
             <RouteMap
               plan={plan}
+              geometry={routeRecommendation.geometry}
+              geometryStatus={routeRecommendation.geometryStatus}
+              transferStops={transferStops}
               focusRequest={mapFocusRequest}
               userLocation={mapUserLocation}
               userHeading={mapUserHeading}
