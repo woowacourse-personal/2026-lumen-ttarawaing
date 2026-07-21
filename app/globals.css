@@ -51,17 +51,22 @@ input:focus-visible {
 }
 
 .app-shell {
+  position: relative;
   min-height: 100vh;
   overflow: hidden;
 }
 
 .topbar {
-  position: relative;
+  position: absolute;
   z-index: 1000;
+  top: 0;
+  left: 0;
   display: flex;
+  width: 455px;
   height: 72px;
   align-items: center;
   padding: 0 28px;
+  border-right: 1px solid rgba(217, 226, 220, 0.92);
   border-bottom: 1px solid rgba(217, 226, 220, 0.92);
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 1px 10px rgba(24, 55, 42, 0.04);
@@ -109,14 +114,15 @@ input:focus-visible {
 
 .workspace {
   display: grid;
-  min-height: calc(100vh - 72px);
+  min-height: 100vh;
   grid-template-columns: minmax(420px, 455px) minmax(0, 1fr);
 }
 
 .route-panel {
   position: relative;
   z-index: 500;
-  height: calc(100vh - 72px);
+  height: 100vh;
+  padding-top: 72px;
   border-right: 1px solid #dce5df;
   background: var(--surface);
   box-shadow: 8px 0 26px rgba(42, 68, 57, 0.07);
@@ -1065,7 +1071,7 @@ input:focus-visible {
 .map-panel {
   position: relative;
   min-width: 0;
-  height: calc(100vh - 72px);
+  height: 100vh;
   overflow: hidden;
   background: #e8ede9;
 }
@@ -1218,6 +1224,35 @@ input:focus-visible {
   pointer-events: none;
 }
 
+.current-location-marker-wrapper {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.current-location-marker {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 4px solid white;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 3px 12px rgba(0, 103, 77, 0.36);
+  pointer-events: none;
+}
+
+.current-location-marker::before {
+  position: absolute;
+  z-index: -1;
+  inset: -11px;
+  border: 2px solid rgba(0, 167, 123, 0.34);
+  border-radius: 50%;
+  background: rgba(0, 167, 123, 0.12);
+  animation: location-pulse 1.8s ease-out infinite;
+  content: "";
+}
+
 .leaflet-tooltip {
   padding: 6px 8px;
   border: 0;
@@ -1285,6 +1320,19 @@ input:focus-visible {
   }
 }
 
+@keyframes location-pulse {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.72);
+  }
+
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(1.24);
+  }
+}
+
 .map-route-attribution {
   position: absolute;
   z-index: 400;
@@ -1305,11 +1353,71 @@ input:focus-visible {
   text-decoration: underline;
 }
 
-.map-legend {
+.map-guide-controls {
   position: absolute;
-  z-index: 400;
-  right: 20px;
-  bottom: 20px;
+  z-index: 410;
+  bottom: 96px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.map-location-control {
+  display: inline-flex;
+  height: 40px;
+  cursor: pointer;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid rgba(205, 220, 212, 0.96);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 18px rgba(30, 58, 46, 0.14);
+  color: var(--green-dark);
+  backdrop-filter: blur(12px);
+  font-size: 11px;
+  font-weight: 720;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.map-location-control:hover:not(:disabled) {
+  border-color: #9fd8c5;
+  box-shadow: 0 8px 22px rgba(20, 81, 59, 0.18);
+  transform: translateY(-1px);
+}
+
+.map-location-control:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.map-location-control.ready {
+  border-color: rgba(0, 167, 123, 0.38);
+  background: rgba(240, 252, 247, 0.97);
+}
+
+.map-location-control.error {
+  color: #b95741;
+}
+
+.map-location-control .is-spinning {
+  animation: spin 800ms linear infinite;
+}
+
+.map-location-error {
+  padding: 6px 9px;
+  border: 1px solid rgba(221, 195, 187, 0.92);
+  border-radius: 9px;
+  background: rgba(255, 250, 248, 0.96);
+  box-shadow: 0 5px 14px rgba(68, 41, 34, 0.1);
+  color: #a84f3d;
+  font-size: 9px;
+  font-weight: 640;
+}
+
+.map-legend {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1460,8 +1568,10 @@ input:focus-visible {
   .topbar {
     position: sticky;
     top: 0;
+    width: 100%;
     height: 64px;
     padding: 0 18px;
+    border-right: 0;
   }
 
   .brand-mark {
@@ -1486,6 +1596,7 @@ input:focus-visible {
 
   .route-panel {
     height: auto;
+    padding-top: 0;
     border-right: 0;
     box-shadow: none;
   }
@@ -1525,6 +1636,11 @@ input:focus-visible {
 
   .map-station-card > div:nth-child(2) strong {
     max-width: 46vw;
+  }
+
+  .map-guide-controls {
+    bottom: 88px;
+    left: 14px;
   }
 
   .map-legend {

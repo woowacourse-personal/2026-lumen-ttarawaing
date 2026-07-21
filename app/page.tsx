@@ -493,6 +493,7 @@ function formatDistance(meters: number) {
 }
 
 type RouteGeometryStatus = "loading" | "ready" | "partial" | "fallback";
+type MapLocationStatus = "idle" | "loading" | "ready" | "error";
 
 type RouteGeometryState = {
   key: string;
@@ -741,11 +742,15 @@ function RouteMapChrome({
   plan,
   ready,
   geometryStatus,
+  locationStatus,
+  onLocate,
   showOpenStreetMapAttribution = false,
 }: {
   plan: RoutePlan;
   ready: boolean;
   geometryStatus: RouteGeometryStatus;
+  locationStatus: MapLocationStatus;
+  onLocate: () => void;
   showOpenStreetMapAttribution?: boolean;
 }) {
   const hasOpenStreetMapRoute =
@@ -775,14 +780,44 @@ function RouteMapChrome({
           © OpenStreetMap contributors
         </a>
       ) : null}
-      <div className="map-legend">
-        <div>
-          <span className="legend-line walk" />
-          걷기
-        </div>
-        <div>
-          <span className="legend-line bike" />
-          따릉이
+      <div className="map-guide-controls">
+        <button
+          className={`map-location-control ${locationStatus}`}
+          type="button"
+          aria-label={
+            locationStatus === "error"
+              ? "현재 위치를 확인하지 못했어요. 다시 시도"
+              : locationStatus === "ready"
+                ? "현재 위치 다시 확인"
+                : "현재 위치 확인"
+          }
+          disabled={
+            !ready || geometryStatus === "loading" || locationStatus === "loading"
+          }
+          onClick={onLocate}
+        >
+          <Crosshair
+            className={locationStatus === "loading" ? "is-spinning" : undefined}
+            size={17}
+            strokeWidth={2.3}
+            aria-hidden="true"
+          />
+          <span>{locationStatus === "loading" ? "확인 중" : "현재 위치"}</span>
+        </button>
+        {locationStatus === "error" ? (
+          <span className="map-location-error" role="alert">
+            위치를 확인할 수 없어요
+          </span>
+        ) : null}
+        <div className="map-legend">
+          <div>
+            <span className="legend-line walk" />
+            걷기
+          </div>
+          <div>
+            <span className="legend-line bike" />
+            따릉이
+          </div>
         </div>
       </div>
       <div className="map-station-card">
@@ -806,14 +841,21 @@ function LeafletRouteMap({
   plan,
   geometry,
   geometryStatus,
+  userLocation,
+  locationStatus,
+  onLocate,
 }: {
   plan: RoutePlan;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
+  userLocation: Coordinates | null;
+  locationStatus: MapLocationStatus;
+  onLocate: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const routeLayerRef = useRef<LayerGroup | null>(null);
+  const locationLayerRef = useRef<LayerGroup | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -838,6 +880,7 @@ function LeafletRouteMap({
 
     return () => {
       active = false;
+      locationLayerRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -985,6 +1028,37 @@ function LeafletRouteMap({
     };
   }, [geometry, geometryStatus, plan, ready]);
 
+  useEffect(() => {
+    if (!ready || !mapRef.current || !userLocation) return;
+    const map = mapRef.current;
+    let active = true;
+
+    void import("leaflet").then((leafletModule) => {
+      if (!active || !mapRef.current) return;
+      const L = leafletModule.default;
+      locationLayerRef.current?.remove();
+      const group = L.layerGroup().addTo(mapRef.current);
+      locationLayerRef.current = group;
+      L.marker(userLocation, {
+        icon: L.divIcon({
+          className: "current-location-marker-wrapper",
+          html: '<span class="current-location-marker" aria-hidden="true"></span>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        }),
+      })
+        .bindTooltip("현재 위치", { direction: "top", offset: [0, -12] })
+        .addTo(group);
+      map.flyTo(userLocation, Math.max(map.getZoom(), 15), { duration: 0.45 });
+    });
+
+    return () => {
+      active = false;
+      locationLayerRef.current?.remove();
+      locationLayerRef.current = null;
+    };
+  }, [ready, userLocation]);
+
   return (
     <div className="map-wrap">
       <div ref={nodeRef} className="map-canvas" aria-label="따라와잉 경로 지도" />
@@ -992,6 +1066,8 @@ function LeafletRouteMap({
         plan={plan}
         ready={ready}
         geometryStatus={geometryStatus}
+        locationStatus={locationStatus}
+        onLocate={onLocate}
       />
     </div>
   );
@@ -1001,17 +1077,24 @@ function KakaoRouteMap({
   plan,
   geometry,
   geometryStatus,
+  userLocation,
+  locationStatus,
+  onLocate,
   onError,
 }: {
   plan: RoutePlan;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
+  userLocation: Coordinates | null;
+  locationStatus: MapLocationStatus;
+  onLocate: () => void;
   onError: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMap | null>(null);
   const sdkRef = useRef<KakaoSdk | null>(null);
   const mapObjectsRef = useRef<KakaoMapObject[]>([]);
+  const locationObjectRef = useRef<KakaoMapObject | null>(null);
   const [ready, setReady] = useState(false);
 
   const clearMapObjects = useCallback(() => {
@@ -1039,6 +1122,8 @@ function KakaoRouteMap({
     return () => {
       active = false;
       clearMapObjects();
+      locationObjectRef.current?.setMap(null);
+      locationObjectRef.current = null;
       if (mapRef.current && sdkRef.current) {
         sdkRef.current.maps.event.clearInstanceListeners(mapRef.current);
       }
@@ -1214,6 +1299,35 @@ function KakaoRouteMap({
     };
   }, [clearMapObjects, geometry, geometryStatus, plan, ready]);
 
+  useEffect(() => {
+    const sdk = sdkRef.current;
+    const map = mapRef.current;
+    if (!ready || !sdk || !map || !userLocation) return;
+
+    locationObjectRef.current?.setMap(null);
+    const marker = document.createElement("span");
+    marker.className = "current-location-marker";
+    marker.title = "현재 위치";
+    marker.setAttribute("aria-hidden", "true");
+    const position = new sdk.maps.LatLng(userLocation[0], userLocation[1]);
+    const overlay = new sdk.maps.CustomOverlay({
+      map,
+      position,
+      content: marker,
+      xAnchor: 0.5,
+      yAnchor: 0.5,
+      zIndex: 6,
+    });
+    locationObjectRef.current = overlay;
+    map.setLevel(4);
+    map.panTo(position);
+
+    return () => {
+      overlay.setMap(null);
+      if (locationObjectRef.current === overlay) locationObjectRef.current = null;
+    };
+  }, [ready, userLocation]);
+
   return (
     <div className="map-wrap">
       <div
@@ -1225,6 +1339,8 @@ function KakaoRouteMap({
         plan={plan}
         ready={ready}
         geometryStatus={geometryStatus}
+        locationStatus={locationStatus}
+        onLocate={onLocate}
         showOpenStreetMapAttribution
       />
     </div>
@@ -1233,8 +1349,37 @@ function KakaoRouteMap({
 
 function RouteMap({ plan }: { plan: RoutePlan }) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
+  const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
+  const [locationStatus, setLocationStatus] = useState<MapLocationStatus>("idle");
+  const locationRequestIdRef = useRef(0);
   const useLeafletFallback = useCallback(() => setProvider("leaflet"), []);
   const { geometry, status: geometryStatus } = useRouteGeometry(plan);
+
+  const locateUser = useCallback(() => {
+    const requestId = locationRequestIdRef.current + 1;
+    locationRequestIdRef.current = requestId;
+    if (!navigator.geolocation) {
+      setLocationStatus("error");
+      return;
+    }
+
+    setLocationStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (locationRequestIdRef.current !== requestId) return;
+        setUserLocation([
+          position.coords.latitude,
+          position.coords.longitude,
+        ]);
+        setLocationStatus("ready");
+      },
+      () => {
+        if (locationRequestIdRef.current !== requestId) return;
+        setLocationStatus("error");
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+    );
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1250,12 +1395,22 @@ function RouteMap({ plan }: { plan: RoutePlan }) {
     };
   }, []);
 
+  useEffect(
+    () => () => {
+      locationRequestIdRef.current += 1;
+    },
+    [],
+  );
+
   if (provider === "kakao") {
     return (
       <KakaoRouteMap
         plan={plan}
         geometry={geometry}
         geometryStatus={geometryStatus}
+        userLocation={userLocation}
+        locationStatus={locationStatus}
+        onLocate={locateUser}
         onError={useLeafletFallback}
       />
     );
@@ -1266,6 +1421,9 @@ function RouteMap({ plan }: { plan: RoutePlan }) {
         plan={plan}
         geometry={geometry}
         geometryStatus={geometryStatus}
+        userLocation={userLocation}
+        locationStatus={locationStatus}
+        onLocate={locateUser}
       />
     );
   }
@@ -1277,6 +1435,8 @@ function RouteMap({ plan }: { plan: RoutePlan }) {
         plan={plan}
         ready={false}
         geometryStatus={geometryStatus}
+        locationStatus={locationStatus}
+        onLocate={locateUser}
       />
     </div>
   );

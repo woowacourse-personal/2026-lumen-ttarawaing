@@ -107,10 +107,50 @@ test("shows a centered spinner instead of temporary dotted route geometry", asyn
 
   assert.match(pageSource, /className="route-loading"/);
   assert.match(pageSource, /경로를 불러오고 있어요/);
-  assert.equal(loadingGuards.length, 3);
+  assert.equal(loadingGuards.length, 4);
   assert.match(routeLoadingRule, /top:\s*50%/);
   assert.match(routeLoadingRule, /left:\s*50%/);
   assert.match(routeLoadingRule, /pointer-events:\s*none/);
+});
+
+test("locates the user from a lower-left map control on both map providers", async () => {
+  const [pageSource, styles, kakaoSource] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/kakao-maps.ts", import.meta.url), "utf8"),
+  ]);
+  const guideControlsRule =
+    styles.match(/\.map-guide-controls\s*\{([^}]+)\}/)?.[1] ?? "";
+  const locationControlIndex = pageSource.indexOf("map-location-control");
+  const legendIndex = pageSource.indexOf('className="map-legend"');
+
+  assert.ok(locationControlIndex >= 0);
+  assert.ok(legendIndex > locationControlIndex);
+  assert.match(pageSource, /navigator\.geolocation\.getCurrentPosition/);
+  assert.match(pageSource, /map\.flyTo\(userLocation/);
+  assert.match(pageSource, /map\.panTo\(position\)/);
+  assert.match(pageSource, /current-location-marker/);
+  assert.match(kakaoSource, /panTo\(position: KakaoLatLng\)/);
+  assert.match(guideControlsRule, /bottom:\s*96px/);
+  assert.match(guideControlsRule, /left:\s*20px/);
+});
+
+test("fills the desktop map to the top beside the left-only header", async () => {
+  const styles = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  const topbarRule = styles.match(/\.topbar\s*\{([^}]+)\}/)?.[1] ?? "";
+  const workspaceRule = styles.match(/\.workspace\s*\{([^}]+)\}/)?.[1] ?? "";
+  const routePanelRule = styles.match(/\.route-panel\s*\{([^}]+)\}/)?.[1] ?? "";
+  const mapPanelRule = styles.match(/\.map-panel\s*\{([^}]+)\}/)?.[1] ?? "";
+
+  assert.match(topbarRule, /position:\s*absolute/);
+  assert.match(topbarRule, /width:\s*455px/);
+  assert.match(workspaceRule, /min-height:\s*100vh/);
+  assert.match(routePanelRule, /height:\s*100vh/);
+  assert.match(routePanelRule, /padding-top:\s*72px/);
+  assert.match(mapPanelRule, /height:\s*100vh/);
 });
 
 test("keeps the place-swap control in flow between the two input boxes", async () => {

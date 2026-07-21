@@ -26,6 +26,8 @@ export type KakaoMap = {
     paddingLeft?: number,
   ): void;
   relayout(): void;
+  panTo(position: KakaoLatLng): void;
+  setLevel(level: number): void;
 };
 
 export type KakaoMapObject = {
