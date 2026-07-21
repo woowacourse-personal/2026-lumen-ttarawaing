@@ -1498,7 +1498,7 @@ export default function Home() {
               </div>
               <div className="title-row">
                 <div>
-                  <h1 id="route-search-title">오늘은 따릉이와 함께 어디로 가볼까요?</h1>
+                  <h1 id="route-search-title">오늘은 어디로 가볼까요?</h1>
                   <p>출발지와 도착지만 고르면 나머지는 맡겨주세요.</p>
                 </div>
               </div>
