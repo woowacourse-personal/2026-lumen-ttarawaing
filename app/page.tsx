@@ -81,6 +81,13 @@ type RouteHistoryItem = {
   destination: Place;
 };
 
+type MapFocusTarget = "origin" | "startStation" | "endStation" | "destination";
+
+type MapFocusRequest = {
+  target: MapFocusTarget;
+  requestId: number;
+};
+
 const PLACES: Place[] = [
   {
     id: "gwanghwamun",
@@ -854,6 +861,7 @@ function LeafletRouteMap({
   plan,
   geometry,
   geometryStatus,
+  focusRequest,
   userLocation,
   locationStatus,
   onLocate,
@@ -861,6 +869,7 @@ function LeafletRouteMap({
   plan: RoutePlan;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
+  focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
   locationStatus: MapLocationStatus;
   onLocate: () => void;
@@ -869,7 +878,12 @@ function LeafletRouteMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const routeLayerRef = useRef<LayerGroup | null>(null);
   const locationLayerRef = useRef<LayerGroup | null>(null);
+  const focusRequestRef = useRef<MapFocusRequest | null>(focusRequest);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    focusRequestRef.current = focusRequest;
+  }, [focusRequest]);
 
   useEffect(() => {
     let active = true;
@@ -909,6 +923,13 @@ function LeafletRouteMap({
       if (!active || !mapRef.current) return;
       const L = leafletModule.default;
       if (geometryStatus === "loading") {
+        const requestedFocus = focusRequestRef.current;
+        if (requestedFocus) {
+          mapRef.current.flyTo(plan[requestedFocus.target].coordinates, 16, {
+            duration: 0.45,
+          });
+          return;
+        }
         const bounds = L.latLngBounds([
           plan.origin.coordinates,
           plan.startStation.coordinates,
@@ -1029,17 +1050,31 @@ function LeafletRouteMap({
         plan.endStation.coordinates,
         plan.destination.coordinates,
       ]);
-      mapRef.current.fitBounds(bounds, {
-        paddingTopLeft: [80, 110],
-        paddingBottomRight: [90, 90],
-        maxZoom: 15,
-      });
+      const requestedFocus = focusRequestRef.current;
+      if (requestedFocus) {
+        mapRef.current.flyTo(plan[requestedFocus.target].coordinates, 16, {
+          duration: 0.45,
+        });
+      } else {
+        mapRef.current.fitBounds(bounds, {
+          paddingTopLeft: [80, 110],
+          paddingBottomRight: [90, 90],
+          maxZoom: 15,
+        });
+      }
     });
 
     return () => {
       active = false;
     };
   }, [geometry, geometryStatus, plan, ready]);
+
+  useEffect(() => {
+    if (!ready || !mapRef.current || !focusRequest) return;
+    mapRef.current.flyTo(plan[focusRequest.target].coordinates, 16, {
+      duration: 0.45,
+    });
+  }, [focusRequest, plan, ready]);
 
   useEffect(() => {
     if (!ready || !mapRef.current || !userLocation) return;
@@ -1090,6 +1125,7 @@ function KakaoRouteMap({
   plan,
   geometry,
   geometryStatus,
+  focusRequest,
   userLocation,
   locationStatus,
   onLocate,
@@ -1098,6 +1134,7 @@ function KakaoRouteMap({
   plan: RoutePlan;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
+  focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
   locationStatus: MapLocationStatus;
   onLocate: () => void;
@@ -1108,7 +1145,12 @@ function KakaoRouteMap({
   const sdkRef = useRef<KakaoSdk | null>(null);
   const mapObjectsRef = useRef<KakaoMapObject[]>([]);
   const locationObjectRef = useRef<KakaoMapObject | null>(null);
+  const focusRequestRef = useRef<MapFocusRequest | null>(focusRequest);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    focusRequestRef.current = focusRequest;
+  }, [focusRequest]);
 
   const clearMapObjects = useCallback(() => {
     mapObjectsRef.current.forEach((mapObject) => mapObject.setMap(null));
@@ -1175,7 +1217,14 @@ function KakaoRouteMap({
       ].forEach((coordinates) => bounds.extend(toLatLng(coordinates)));
       const animationFrame = window.requestAnimationFrame(() => {
         map.relayout();
-        map.setBounds(bounds, 110, 90, 90, 80);
+        const requestedFocus = focusRequestRef.current;
+        if (requestedFocus) {
+          const position = toLatLng(plan[requestedFocus.target].coordinates);
+          map.setLevel(4);
+          map.panTo(position);
+        } else {
+          map.setBounds(bounds, 110, 90, 90, 80);
+        }
       });
 
       return () => {
@@ -1299,7 +1348,14 @@ function KakaoRouteMap({
 
     const animationFrame = window.requestAnimationFrame(() => {
       map.relayout();
-      map.setBounds(bounds, 110, 90, 90, 80);
+      const requestedFocus = focusRequestRef.current;
+      if (requestedFocus) {
+        const position = toLatLng(plan[requestedFocus.target].coordinates);
+        map.setLevel(4);
+        map.panTo(position);
+      } else {
+        map.setBounds(bounds, 110, 90, 90, 80);
+      }
     });
 
     return () => {
@@ -1307,6 +1363,19 @@ function KakaoRouteMap({
       clearMapObjects();
     };
   }, [clearMapObjects, geometry, geometryStatus, plan, ready]);
+
+  useEffect(() => {
+    const sdk = sdkRef.current;
+    const map = mapRef.current;
+    if (!ready || !sdk || !map || !focusRequest) return;
+    const coordinates = plan[focusRequest.target].coordinates;
+    const position = new sdk.maps.LatLng(
+      coordinates[0],
+      coordinates[1],
+    );
+    map.setLevel(4);
+    map.panTo(position);
+  }, [focusRequest, plan, ready]);
 
   useEffect(() => {
     const sdk = sdkRef.current;
@@ -1356,39 +1425,22 @@ function KakaoRouteMap({
   );
 }
 
-function RouteMap({ plan }: { plan: RoutePlan }) {
+function RouteMap({
+  plan,
+  focusRequest,
+  userLocation,
+  locationStatus,
+  onLocate,
+}: {
+  plan: RoutePlan;
+  focusRequest: MapFocusRequest | null;
+  userLocation: Coordinates | null;
+  locationStatus: MapLocationStatus;
+  onLocate: () => void;
+}) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
-  const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
-  const [locationStatus, setLocationStatus] = useState<MapLocationStatus>("idle");
-  const locationRequestIdRef = useRef(0);
   const useLeafletFallback = useCallback(() => setProvider("leaflet"), []);
   const { geometry, status: geometryStatus } = useRouteGeometry(plan);
-
-  const locateUser = useCallback(() => {
-    const requestId = locationRequestIdRef.current + 1;
-    locationRequestIdRef.current = requestId;
-    if (!navigator.geolocation) {
-      setLocationStatus("error");
-      return;
-    }
-
-    setLocationStatus("loading");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (locationRequestIdRef.current !== requestId) return;
-        setUserLocation([
-          position.coords.latitude,
-          position.coords.longitude,
-        ]);
-        setLocationStatus("ready");
-      },
-      () => {
-        if (locationRequestIdRef.current !== requestId) return;
-        setLocationStatus("error");
-      },
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
-    );
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1404,22 +1456,16 @@ function RouteMap({ plan }: { plan: RoutePlan }) {
     };
   }, []);
 
-  useEffect(
-    () => () => {
-      locationRequestIdRef.current += 1;
-    },
-    [],
-  );
-
   if (provider === "kakao") {
     return (
       <KakaoRouteMap
         plan={plan}
         geometry={geometry}
         geometryStatus={geometryStatus}
+        focusRequest={focusRequest}
         userLocation={userLocation}
         locationStatus={locationStatus}
-        onLocate={locateUser}
+        onLocate={onLocate}
         onError={useLeafletFallback}
       />
     );
@@ -1430,9 +1476,10 @@ function RouteMap({ plan }: { plan: RoutePlan }) {
         plan={plan}
         geometry={geometry}
         geometryStatus={geometryStatus}
+        focusRequest={focusRequest}
         userLocation={userLocation}
         locationStatus={locationStatus}
-        onLocate={locateUser}
+        onLocate={onLocate}
       />
     );
   }
@@ -1445,7 +1492,7 @@ function RouteMap({ plan }: { plan: RoutePlan }) {
         ready={false}
         geometryStatus={geometryStatus}
         locationStatus={locationStatus}
-        onLocate={locateUser}
+        onLocate={onLocate}
       />
     </div>
   );
@@ -1466,6 +1513,14 @@ export default function Home() {
   const [routeDetailsOpen, setRouteDetailsOpen] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [notice, setNotice] = useState("");
+  const [mapFocusRequest, setMapFocusRequest] = useState<MapFocusRequest | null>(
+    null,
+  );
+  const [mapUserLocation, setMapUserLocation] = useState<Coordinates | null>(null);
+  const [mapLocationStatus, setMapLocationStatus] =
+    useState<MapLocationStatus>("idle");
+  const mapLocationRequestIdRef = useRef(0);
+  const mapPanelRef = useRef<HTMLElement>(null);
   const [stations, setStations] = useState(STATIONS);
   const [liveBikeStatus, setLiveBikeStatus] = useState<
     "loading" | "ready" | "unavailable"
@@ -1484,6 +1539,13 @@ export default function Home() {
 
     return () => window.clearTimeout(timeoutId);
   }, []);
+
+  useEffect(
+    () => () => {
+      mapLocationRequestIdRef.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1584,6 +1646,7 @@ export default function Home() {
         origin: resolvedOrigin,
         destination: resolvedDestination,
       });
+      setMapFocusRequest(null);
       rememberRoute({ origin: resolvedOrigin, destination: resolvedDestination });
       setSelectedEndStationId(undefined);
       setAlternativesOpen(false);
@@ -1644,12 +1707,61 @@ export default function Home() {
     setErrorMessage("");
   };
 
+  const locateMapUser = useCallback(() => {
+    const requestId = mapLocationRequestIdRef.current + 1;
+    mapLocationRequestIdRef.current = requestId;
+    setMapFocusRequest(null);
+    if (!navigator.geolocation) {
+      setMapLocationStatus("error");
+      return;
+    }
+
+    setMapLocationStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (mapLocationRequestIdRef.current !== requestId) return;
+        setMapUserLocation([
+          position.coords.latitude,
+          position.coords.longitude,
+        ]);
+        setMapLocationStatus("ready");
+      },
+      () => {
+        if (mapLocationRequestIdRef.current !== requestId) return;
+        setMapLocationStatus("error");
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+    );
+  }, []);
+
+  const focusMapPoint = useCallback((target: MapFocusTarget) => {
+    mapLocationRequestIdRef.current += 1;
+    setMapLocationStatus("idle");
+    setMapFocusRequest((currentRequest) => ({
+      target,
+      requestId: (currentRequest?.requestId ?? 0) + 1,
+    }));
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.requestAnimationFrame(() => {
+        mapPanelRef.current?.scrollIntoView({
+          behavior: reduceMotion ? "auto" : "smooth",
+          block: "start",
+        });
+      });
+    }
+  }, []);
+
   const resetRoute = () => {
+    mapLocationRequestIdRef.current += 1;
     setOriginQuery("");
     setDestinationQuery("");
     setOrigin(null);
     setDestination(null);
     setCommittedRoute(null);
+    setMapFocusRequest(null);
+    setMapUserLocation(null);
+    setMapLocationStatus("idle");
     setSelectedEndStationId(undefined);
     setAlternativesOpen(false);
     setRouteDetailsOpen(true);
@@ -1825,11 +1937,18 @@ export default function Home() {
               {routeDetailsOpen ? (
                 <ol className="route-timeline">
                   <li className="timeline-place start-place">
-                    <span className="timeline-dot" aria-hidden="true" />
-                    <div>
-                      <small>출발</small>
-                      <strong>{plan.origin.name}</strong>
-                    </div>
+                    <button
+                      className="timeline-focus-button"
+                      type="button"
+                      aria-label={`${plan.origin.name} 출발지를 지도에서 보기`}
+                      onClick={() => focusMapPoint("origin")}
+                    >
+                      <span className="timeline-dot" aria-hidden="true" />
+                      <span className="timeline-place-copy">
+                        <small>출발</small>
+                        <strong>{plan.origin.name}</strong>
+                      </span>
+                    </button>
                   </li>
                   <li className="timeline-segment walking-segment">
                     <span className="segment-icon">
@@ -1843,36 +1962,43 @@ export default function Home() {
                   <li className="timeline-station">
                     <span className="station-number">1</span>
                     <div className="station-card-copy">
-                      <div className="station-title-line">
-                        <div>
-                          <small>
-                            {plan.startStationAdjustedForAvailability
-                              ? "가까운 최적 대여소"
-                              : "가장 가까운 대여소"}
-                          </small>
-                          <strong>{plan.startStation.name}</strong>
-                        </div>
-                        <span
-                          className={`availability ${
-                            liveBikeStatus !== "ready" || plan.startStation.bikes === null
-                              ? "status-unlinked"
-                              : plan.startStation.bikes === 0
-                                ? "bikes-empty"
-                                : "bikes-live"
-                          }`}
-                        >
-                          {liveBikeStatus === "ready" && plan.startStation.bikes !== null ? (
-                            <>
-                              <Bike size={13} aria-hidden="true" /> {plan.startStation.bikes}대
-                            </>
-                          ) : liveBikeStatus === "loading" ? (
-                            "현황 확인 중"
-                          ) : (
-                            "현황 확인 필요"
-                          )}
+                      <button
+                        className="station-focus-button"
+                        type="button"
+                        aria-label={`${plan.startStation.name} 출발 대여소를 지도에서 보기`}
+                        onClick={() => focusMapPoint("startStation")}
+                      >
+                        <span className="station-title-line">
+                          <span className="station-title-copy">
+                            <small>
+                              {plan.startStationAdjustedForAvailability
+                                ? "가까운 최적 대여소"
+                                : "가장 가까운 대여소"}
+                            </small>
+                            <strong>{plan.startStation.name}</strong>
+                          </span>
+                          <span
+                            className={`availability ${
+                              liveBikeStatus !== "ready" || plan.startStation.bikes === null
+                                ? "status-unlinked"
+                                : plan.startStation.bikes === 0
+                                  ? "bikes-empty"
+                                  : "bikes-live"
+                            }`}
+                          >
+                            {liveBikeStatus === "ready" && plan.startStation.bikes !== null ? (
+                              <>
+                                <Bike size={13} aria-hidden="true" /> {plan.startStation.bikes}대
+                              </>
+                            ) : liveBikeStatus === "loading" ? (
+                              "현황 확인 중"
+                            ) : (
+                              "현황 확인 필요"
+                            )}
+                          </span>
                         </span>
-                      </div>
-                      <p>{plan.startStation.address}</p>
+                        <span className="station-address">{plan.startStation.address}</span>
+                      </button>
                       {plan.startStationAdjustedForAvailability ? (
                         <p className="start-station-adjustment-note" role="status">
                           현재 가장 가까운 정류소의 따릉이가 없어서 다른 최적의 대여소를
@@ -1893,16 +2019,23 @@ export default function Home() {
                   <li className="timeline-station return-station">
                     <span className="station-number">2</span>
                     <div className="station-card-copy">
-                      <div className="station-title-line">
-                        <div>
-                          <small>
-                            목적지와 가까운 반납 대여소
-                            <span className="best-badge">추천</span>
-                          </small>
-                          <strong>{plan.endStation.name}</strong>
-                        </div>
-                      </div>
-                      <p>{plan.endStation.address}</p>
+                      <button
+                        className="station-focus-button"
+                        type="button"
+                        aria-label={`${plan.endStation.name} 도착 대여소를 지도에서 보기`}
+                        onClick={() => focusMapPoint("endStation")}
+                      >
+                        <span className="station-title-line">
+                          <span className="station-title-copy">
+                            <small>
+                              목적지와 가까운 반납 대여소
+                              <span className="best-badge">추천</span>
+                            </small>
+                            <strong>{plan.endStation.name}</strong>
+                          </span>
+                        </span>
+                        <span className="station-address">{plan.endStation.address}</span>
+                      </button>
                       <button
                         className="alternative-toggle"
                         type="button"
@@ -1923,7 +2056,10 @@ export default function Home() {
                               type="button"
                               className={station.id === plan.endStation.id ? "selected" : ""}
                               key={station.id}
-                              onClick={() => setSelectedEndStationId(station.id)}
+                              onClick={() => {
+                                setMapFocusRequest(null);
+                                setSelectedEndStationId(station.id);
+                              }}
                             >
                               <span>
                                 <strong>{station.name}</strong>
@@ -1960,11 +2096,18 @@ export default function Home() {
                     </div>
                   </li>
                   <li className="timeline-place destination-place">
-                    <span className="timeline-dot" aria-hidden="true" />
-                    <div>
-                      <small>도착</small>
-                      <strong>{plan.destination.name}</strong>
-                    </div>
+                    <button
+                      className="timeline-focus-button"
+                      type="button"
+                      aria-label={`${plan.destination.name} 도착지를 지도에서 보기`}
+                      onClick={() => focusMapPoint("destination")}
+                    >
+                      <span className="timeline-dot" aria-hidden="true" />
+                      <span className="timeline-place-copy">
+                        <small>도착</small>
+                        <strong>{plan.destination.name}</strong>
+                      </span>
+                    </button>
                   </li>
                 </ol>
               ) : null}
@@ -2027,11 +2170,18 @@ export default function Home() {
         </aside>
 
         <section
+          ref={mapPanelRef}
           className={`map-panel${plan ? "" : " is-empty"}`}
           aria-label={plan ? "경로 지도" : "경로 검색 안내"}
         >
           {plan ? (
-            <RouteMap plan={plan} />
+            <RouteMap
+              plan={plan}
+              focusRequest={mapFocusRequest}
+              userLocation={mapUserLocation}
+              locationStatus={mapLocationStatus}
+              onLocate={locateMapUser}
+            />
           ) : (
             <div className="map-empty-state">
               <span className="map-empty-icon">

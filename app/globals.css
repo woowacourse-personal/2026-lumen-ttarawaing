@@ -692,16 +692,34 @@ input:focus-visible {
 }
 
 .timeline-place {
-  display: grid;
-  grid-template-columns: 31px 1fr;
-  gap: 11px;
-  align-items: center;
+  display: block;
 }
 
-.timeline-place > div {
+.timeline-focus-button {
+  display: grid;
+  width: 100%;
+  cursor: pointer;
+  grid-template-columns: 31px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  padding: 5px 4px 5px 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.timeline-place-copy {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 1px;
+}
+
+.timeline-focus-button:hover,
+.timeline-focus-button:focus-visible {
+  background: #f2f8f5;
 }
 
 .timeline-place small,
@@ -826,12 +844,29 @@ input:focus-visible {
   gap: 9px;
 }
 
-.station-title-line > div {
+.station-title-copy {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
   gap: 3px;
+}
+
+.station-focus-button {
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  padding: 5px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.station-focus-button:hover,
+.station-focus-button:focus-visible {
+  background: #eef8f4;
 }
 
 .station-title-line strong {
@@ -870,7 +905,9 @@ input:focus-visible {
   color: #ad4a35;
 }
 
+.station-address,
 .station-card-copy > p {
+  display: block;
   margin: 6px 0 0;
   color: #919b96;
   font-size: 9px;

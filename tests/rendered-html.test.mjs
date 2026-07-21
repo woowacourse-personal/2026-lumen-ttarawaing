@@ -273,6 +273,43 @@ test("anchors every route marker at the visible pointer tip", async () => {
   assert.match(pageSource, /\$\{className\}-wrapper/);
 });
 
+test("focuses the map when each route timeline place is selected", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pageSource, /focusMapPoint\("origin"\)/);
+  assert.match(pageSource, /focusMapPoint\("startStation"\)/);
+  assert.match(pageSource, /focusMapPoint\("endStation"\)/);
+  assert.match(pageSource, /focusMapPoint\("destination"\)/);
+  assert.match(pageSource, /출발지를 지도에서 보기/);
+  assert.match(pageSource, /출발 대여소를 지도에서 보기/);
+  assert.match(pageSource, /도착 대여소를 지도에서 보기/);
+  assert.match(pageSource, /도착지를 지도에서 보기/);
+  assert.match(
+    pageSource,
+    /<RouteMap\s+plan=\{plan\}\s+focusRequest=\{mapFocusRequest\}/,
+  );
+  assert.match(
+    pageSource,
+    /mapRef\.current\.flyTo\(plan\[focusRequest\.target\]\.coordinates, 16/,
+  );
+  assert.match(pageSource, /plan\[requestedFocus\.target\]\.coordinates/);
+  assert.match(pageSource, /map\.setLevel\(4\);\s*map\.panTo\(position\);/s);
+  assert.match(pageSource, /mapPanelRef\.current\?\.scrollIntoView/);
+  assert.match(pageSource, /prefers-reduced-motion:\s*reduce/);
+  assert.match(pageSource, /mapLocationRequestIdRef\.current \+= 1/);
+  assert.match(
+    styles,
+    /\.timeline-focus-button\s*\{[^}]*cursor:\s*pointer[^}]*text-align:\s*left/s,
+  );
+  assert.match(
+    styles,
+    /\.station-focus-button\s*\{[^}]*cursor:\s*pointer[^}]*text-align:\s*left/s,
+  );
+});
+
 test("searches and accepts both Seoul and Gyeonggi Kakao places", async () => {
   const [pageSource, kakaoSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
