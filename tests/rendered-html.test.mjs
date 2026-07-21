@@ -293,10 +293,18 @@ test("focuses the map when each route timeline place is selected", async () => {
   );
   assert.match(
     pageSource,
-    /mapRef\.current\.flyTo\(plan\[focusRequest\.target\]\.coordinates, 16/,
+    /const ROUTE_FOCUS_LEAFLET_ZOOM = 18/,
+  );
+  assert.match(pageSource, /const ROUTE_FOCUS_KAKAO_LEVEL = 2/);
+  assert.match(
+    pageSource,
+    /mapRef\.current\.flyTo\(\s*plan\[focusRequest\.target\]\.coordinates,\s*ROUTE_FOCUS_LEAFLET_ZOOM/,
   );
   assert.match(pageSource, /plan\[requestedFocus\.target\]\.coordinates/);
-  assert.match(pageSource, /map\.setLevel\(4\);\s*map\.panTo\(position\);/s);
+  assert.match(
+    pageSource,
+    /map\.setLevel\(ROUTE_FOCUS_KAKAO_LEVEL\);\s*map\.panTo\(position\);/s,
+  );
   assert.match(pageSource, /mapPanelRef\.current\?\.scrollIntoView/);
   assert.match(pageSource, /prefers-reduced-motion:\s*reduce/);
   assert.match(pageSource, /mapLocationRequestIdRef\.current \+= 1/);

@@ -88,6 +88,9 @@ type MapFocusRequest = {
   requestId: number;
 };
 
+const ROUTE_FOCUS_LEAFLET_ZOOM = 18;
+const ROUTE_FOCUS_KAKAO_LEVEL = 2;
+
 const PLACES: Place[] = [
   {
     id: "gwanghwamun",
@@ -925,9 +928,11 @@ function LeafletRouteMap({
       if (geometryStatus === "loading") {
         const requestedFocus = focusRequestRef.current;
         if (requestedFocus) {
-          mapRef.current.flyTo(plan[requestedFocus.target].coordinates, 16, {
-            duration: 0.45,
-          });
+          mapRef.current.flyTo(
+            plan[requestedFocus.target].coordinates,
+            ROUTE_FOCUS_LEAFLET_ZOOM,
+            { duration: 0.45 },
+          );
           return;
         }
         const bounds = L.latLngBounds([
@@ -1052,9 +1057,11 @@ function LeafletRouteMap({
       ]);
       const requestedFocus = focusRequestRef.current;
       if (requestedFocus) {
-        mapRef.current.flyTo(plan[requestedFocus.target].coordinates, 16, {
-          duration: 0.45,
-        });
+        mapRef.current.flyTo(
+          plan[requestedFocus.target].coordinates,
+          ROUTE_FOCUS_LEAFLET_ZOOM,
+          { duration: 0.45 },
+        );
       } else {
         mapRef.current.fitBounds(bounds, {
           paddingTopLeft: [80, 110],
@@ -1071,9 +1078,11 @@ function LeafletRouteMap({
 
   useEffect(() => {
     if (!ready || !mapRef.current || !focusRequest) return;
-    mapRef.current.flyTo(plan[focusRequest.target].coordinates, 16, {
-      duration: 0.45,
-    });
+    mapRef.current.flyTo(
+      plan[focusRequest.target].coordinates,
+      ROUTE_FOCUS_LEAFLET_ZOOM,
+      { duration: 0.45 },
+    );
   }, [focusRequest, plan, ready]);
 
   useEffect(() => {
@@ -1220,7 +1229,7 @@ function KakaoRouteMap({
         const requestedFocus = focusRequestRef.current;
         if (requestedFocus) {
           const position = toLatLng(plan[requestedFocus.target].coordinates);
-          map.setLevel(4);
+          map.setLevel(ROUTE_FOCUS_KAKAO_LEVEL);
           map.panTo(position);
         } else {
           map.setBounds(bounds, 110, 90, 90, 80);
@@ -1351,7 +1360,7 @@ function KakaoRouteMap({
       const requestedFocus = focusRequestRef.current;
       if (requestedFocus) {
         const position = toLatLng(plan[requestedFocus.target].coordinates);
-        map.setLevel(4);
+        map.setLevel(ROUTE_FOCUS_KAKAO_LEVEL);
         map.panTo(position);
       } else {
         map.setBounds(bounds, 110, 90, 90, 80);
@@ -1373,7 +1382,7 @@ function KakaoRouteMap({
       coordinates[0],
       coordinates[1],
     );
-    map.setLevel(4);
+    map.setLevel(ROUTE_FOCUS_KAKAO_LEVEL);
     map.panTo(position);
   }, [focusRequest, plan, ready]);
 
