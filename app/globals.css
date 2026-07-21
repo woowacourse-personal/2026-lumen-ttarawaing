@@ -1329,7 +1329,45 @@ input:focus-visible {
 }
 
 .current-location-marker {
+  --location-heading: 0deg;
   position: relative;
+  display: block;
+  width: 44px;
+  height: 44px;
+  pointer-events: none;
+}
+
+.current-location-direction {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  opacity: 0;
+  transform: rotate(var(--location-heading));
+  transition: opacity 160ms ease;
+}
+
+.current-location-direction::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 15px;
+  height: 23px;
+  background: linear-gradient(180deg, rgba(0, 167, 123, 0.72), rgba(0, 167, 123, 0.16));
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+  content: "";
+  filter: drop-shadow(0 2px 4px rgba(0, 103, 77, 0.2));
+  transform: translateX(-50%);
+}
+
+.current-location-marker.has-heading .current-location-direction {
+  opacity: 1;
+}
+
+.current-location-dot {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
   isolation: isolate;
   display: block;
   width: 16px;
@@ -1338,10 +1376,10 @@ input:focus-visible {
   border-radius: 50%;
   background: var(--green);
   box-shadow: 0 3px 12px rgba(0, 103, 77, 0.36);
-  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
-.current-location-marker::before {
+.current-location-dot::before {
   position: absolute;
   z-index: -1;
   inset: -11px;
@@ -1498,6 +1536,17 @@ input:focus-visible {
   background: rgba(240, 252, 247, 0.97);
 }
 
+.map-location-control.tracking,
+.map-location-control.heading {
+  border-color: rgba(0, 167, 123, 0.48);
+  background: rgba(228, 249, 240, 0.98);
+  box-shadow: 0 7px 20px rgba(0, 103, 77, 0.2);
+}
+
+.map-location-control.heading {
+  color: #007f60;
+}
+
 .map-location-control.error {
   color: #b95741;
 }
@@ -1515,6 +1564,12 @@ input:focus-visible {
   color: #a84f3d;
   font-size: 9px;
   font-weight: 640;
+}
+
+.map-location-error.is-guidance {
+  border-color: rgba(178, 210, 197, 0.92);
+  background: rgba(248, 253, 250, 0.97);
+  color: #49695d;
 }
 
 .map-legend {

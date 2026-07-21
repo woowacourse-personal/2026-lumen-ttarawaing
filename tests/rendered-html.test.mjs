@@ -129,7 +129,7 @@ test("shows a centered spinner instead of temporary dotted route geometry", asyn
   assert.match(routeLoadingRule, /pointer-events:\s*none/);
 });
 
-test("locates the user from a lower-right map control on both map providers", async () => {
+test("tracks live location, then enables heading from the lower-right map control", async () => {
   const [pageSource, styles, kakaoSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -148,17 +148,38 @@ test("locates the user from a lower-right map control on both map providers", as
     pageSource,
     /<span>\{locationStatus === "loading" \? "확인 중" : "현재 위치"\}<\/span>/,
   );
-  assert.match(pageSource, /navigator\.geolocation\.getCurrentPosition/);
+  assert.match(pageSource, /navigator\.geolocation\.watchPosition/);
+  assert.match(pageSource, /navigator\.geolocation\.clearWatch/);
+  assert.match(pageSource, /position\.coords\.heading/);
+  assert.match(pageSource, /requestPermission/);
+  assert.match(pageSource, /deviceorientationabsolute/);
+  assert.match(pageSource, /webkitCompassHeading/);
+  assert.match(pageSource, /getTiltCompensatedHeading/);
+  assert.match(pageSource, /removeEventListener\(\s*"deviceorientationabsolute"/);
+  assert.match(pageSource, /removeEventListener\("deviceorientation"/);
+  assert.match(pageSource, /mapLocationMode === "tracking"/);
+  assert.match(pageSource, /mapLocationMode === "heading"/);
+  assert.match(pageSource, /내가 보는 방향 표시/);
+  assert.doesNotMatch(pageSource, /aria-pressed=\{locationMode !== "idle"\}/);
   assert.match(pageSource, /map\.flyTo\(userLocation/);
+  assert.match(pageSource, /map\.panTo\(userLocation/);
   assert.match(pageSource, /map\.panTo\(position\)/);
+  assert.match(pageSource, /marker\.setLatLng\(userLocation\)/);
+  assert.match(pageSource, /overlay\.setPosition\(position\)/);
   assert.match(pageSource, /current-location-marker/);
+  assert.match(pageSource, /current-location-direction/);
+  assert.match(pageSource, /has-heading/);
   assert.match(kakaoSource, /panTo\(position: KakaoLatLng\)/);
+  assert.match(kakaoSource, /setPosition\(position: KakaoLatLng\)/);
   assert.match(pageSource, /L\.control\.zoom\(\{ position: "topright" \}\)/);
   assert.match(guideControlsRule, /right:\s*20px/);
   assert.match(guideControlsRule, /bottom:\s*20px/);
   assert.match(guideControlsRule, /align-items:\s*flex-end/);
   assert.match(locationControlRule, /width:\s*40px/);
   assert.match(locationControlRule, /justify-content:\s*center/);
+  assert.match(styles, /\.current-location-direction\s*\{/);
+  assert.match(styles, /rotate\(var\(--location-heading\)\)/);
+  assert.match(styles, /\.current-location-marker\.has-heading/);
 });
 
 test("fills the desktop map to the top beside the left-only header", async () => {
@@ -308,6 +329,7 @@ test("focuses the map when each route timeline place is selected", async () => {
   assert.match(pageSource, /mapPanelRef\.current\?\.scrollIntoView/);
   assert.match(pageSource, /prefers-reduced-motion:\s*reduce/);
   assert.match(pageSource, /mapLocationRequestIdRef\.current \+= 1/);
+  assert.match(pageSource, /stopMapLocationTracking\(true\)/);
   assert.match(
     styles,
     /\.timeline-focus-button\s*\{[^}]*cursor:\s*pointer[^}]*text-align:\s*left/s,

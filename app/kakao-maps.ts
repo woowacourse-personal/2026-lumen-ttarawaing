@@ -34,6 +34,10 @@ export type KakaoMapObject = {
   setMap(map: KakaoMap | null): void;
 };
 
+export type KakaoCustomOverlay = KakaoMapObject & {
+  setPosition(position: KakaoLatLng): void;
+};
+
 type KakaoPlaces = {
   keywordSearch(
     keyword: string,
@@ -75,7 +79,7 @@ export type KakaoSdk = {
       xAnchor?: number;
       yAnchor?: number;
       zIndex?: number;
-    }) => KakaoMapObject;
+    }) => KakaoCustomOverlay;
     services: {
       Places: new () => KakaoPlaces;
       Status: {

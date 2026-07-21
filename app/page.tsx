@@ -17,7 +17,11 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LayerGroup, Map as LeafletMap } from "leaflet";
+import type {
+  LayerGroup,
+  Map as LeafletMap,
+  Marker as LeafletMarker,
+} from "leaflet";
 import {
   isSupportedPlaceAddress,
   loadKakaoMapsSdk,
@@ -30,6 +34,7 @@ import {
 } from "./route-geometry";
 import stationCatalog from "./data/seoul-bike-stations.json";
 import type {
+  KakaoCustomOverlay,
   KakaoMap,
   KakaoMapObject,
   KakaoPlaceResult,
@@ -523,6 +528,116 @@ function formatDistance(meters: number) {
 
 type RouteGeometryStatus = "loading" | "ready" | "partial" | "fallback";
 type MapLocationStatus = "idle" | "loading" | "ready" | "error";
+type MapLocationMode = "idle" | "tracking" | "heading";
+type MapHeadingStatus = "idle" | "requesting" | "active" | "fallback" | "denied";
+
+type CompassOrientationEvent = DeviceOrientationEvent & {
+  webkitCompassHeading?: number;
+  webkitCompassAccuracy?: number;
+};
+
+type OrientationEventConstructor = typeof DeviceOrientationEvent & {
+  requestPermission?: () => Promise<"granted" | "denied">;
+};
+
+const CURRENT_LOCATION_MARKER_HTML =
+  '<span class="current-location-marker" aria-hidden="true"><span class="current-location-direction"></span><span class="current-location-dot"></span></span>';
+
+function normalizeHeading(heading: number) {
+  return ((heading % 360) + 360) % 360;
+}
+
+function headingDelta(from: number, to: number) {
+  return ((to - from + 540) % 360) - 180;
+}
+
+function getScreenOrientationAngle() {
+  return (
+    (typeof screen !== "undefined" ? screen.orientation?.angle : undefined) ??
+    (typeof window !== "undefined"
+      ? Number((window as Window & { orientation?: number }).orientation ?? 0)
+      : 0)
+  );
+}
+
+function getTiltCompensatedHeading(
+  alpha: number,
+  beta: number | null,
+  gamma: number | null,
+) {
+  if (beta === null || gamma === null) {
+    return normalizeHeading(360 - alpha + getScreenOrientationAngle());
+  }
+
+  const degreesToRadians = Math.PI / 180;
+  const x = beta * degreesToRadians;
+  const y = gamma * degreesToRadians;
+  const z = alpha * degreesToRadians;
+  const vectorX =
+    -Math.cos(z) * Math.sin(y) -
+    Math.sin(z) * Math.sin(x) * Math.cos(y);
+  const vectorY =
+    -Math.sin(z) * Math.sin(y) +
+    Math.cos(z) * Math.sin(x) * Math.cos(y);
+  const projectedLength = Math.hypot(vectorX, vectorY);
+  const heading =
+    projectedLength > 0.0001
+      ? (Math.atan2(vectorX, vectorY) * 180) / Math.PI
+      : 360 - alpha;
+  return normalizeHeading(heading + getScreenOrientationAngle());
+}
+
+function getDeviceHeading(event: DeviceOrientationEvent, forceAbsolute = false) {
+  const compassEvent = event as CompassOrientationEvent;
+  if (
+    Number.isFinite(compassEvent.webkitCompassAccuracy) &&
+    Number(compassEvent.webkitCompassAccuracy) < 0
+  ) {
+    return null;
+  }
+  if (Number.isFinite(compassEvent.webkitCompassHeading)) {
+    return normalizeHeading(Number(compassEvent.webkitCompassHeading));
+  }
+  if (!Number.isFinite(event.alpha) || (!forceAbsolute && event.absolute !== true)) {
+    return null;
+  }
+  return getTiltCompensatedHeading(
+    Number(event.alpha),
+    Number.isFinite(event.beta) ? Number(event.beta) : null,
+    Number.isFinite(event.gamma) ? Number(event.gamma) : null,
+  );
+}
+
+function createCurrentLocationMarkerElement() {
+  const marker = document.createElement("span");
+  marker.className = "current-location-marker";
+  marker.title = "현재 위치";
+  marker.setAttribute("aria-hidden", "true");
+
+  const direction = document.createElement("span");
+  direction.className = "current-location-direction";
+  const dot = document.createElement("span");
+  dot.className = "current-location-dot";
+  marker.append(direction, dot);
+  return marker;
+}
+
+function updateCurrentLocationHeading(
+  marker: HTMLElement | null,
+  heading: number | null,
+) {
+  if (!marker) return;
+  const hasHeading = Number.isFinite(heading);
+  marker.classList.toggle("has-heading", hasHeading);
+  if (hasHeading) {
+    marker.style.setProperty(
+      "--location-heading",
+      `${normalizeHeading(Number(heading))}deg`,
+    );
+  } else {
+    marker.style.removeProperty("--location-heading");
+  }
+}
 
 type RouteGeometryState = {
   key: string;
@@ -766,6 +881,8 @@ function RouteMapChrome({
   ready,
   geometryStatus,
   locationStatus,
+  locationMode,
+  headingStatus,
   onLocate,
   showOpenStreetMapAttribution = false,
 }: {
@@ -773,11 +890,29 @@ function RouteMapChrome({
   ready: boolean;
   geometryStatus: RouteGeometryStatus;
   locationStatus: MapLocationStatus;
+  locationMode: MapLocationMode;
+  headingStatus: MapHeadingStatus;
   onLocate: () => void;
   showOpenStreetMapAttribution?: boolean;
 }) {
   const hasOpenStreetMapRoute =
     geometryStatus === "ready" || geometryStatus === "partial";
+  const locationControlBusy =
+    locationStatus === "loading" || headingStatus === "requesting";
+  const locationControlLabel =
+    locationStatus === "error"
+      ? "현재 위치를 확인하지 못했어요. 실시간 추적 다시 시도"
+      : locationMode === "heading"
+        ? "현재 위치와 방향을 추적 중. 현재 위치로 다시 이동"
+        : locationMode === "tracking"
+          ? "내가 보는 방향 표시"
+          : "실시간 현재 위치 추적 시작";
+  const headingMessage =
+    headingStatus === "denied"
+      ? "방향 권한을 허용하면 보는 방향을 표시할 수 있어요"
+      : headingStatus === "fallback"
+        ? "방향 센서가 없어 이동 중일 때만 방향을 표시해요"
+        : "";
 
   return (
     <>
@@ -805,22 +940,16 @@ function RouteMapChrome({
       ) : null}
       <div className="map-guide-controls">
         <button
-          className={`map-location-control ${locationStatus}`}
+          className={`map-location-control ${locationStatus} ${locationMode}`}
           type="button"
-          aria-label={
-            locationStatus === "error"
-              ? "현재 위치를 확인하지 못했어요. 다시 시도"
-              : locationStatus === "ready"
-                ? "현재 위치 다시 확인"
-                : "현재 위치 확인"
-          }
+          aria-label={locationControlLabel}
           disabled={
-            !ready || geometryStatus === "loading" || locationStatus === "loading"
+            !ready || geometryStatus === "loading" || locationControlBusy
           }
           onClick={onLocate}
         >
           <Crosshair
-            className={locationStatus === "loading" ? "is-spinning" : undefined}
+            className={locationControlBusy ? "is-spinning" : undefined}
             size={17}
             strokeWidth={2.3}
             aria-hidden="true"
@@ -829,6 +958,11 @@ function RouteMapChrome({
         {locationStatus === "error" ? (
           <span className="map-location-error" role="alert">
             위치를 확인할 수 없어요
+          </span>
+        ) : null}
+        {headingMessage ? (
+          <span className="map-location-error is-guidance" role="status">
+            {headingMessage}
           </span>
         ) : null}
         <div className="map-legend">
@@ -865,7 +999,10 @@ function LeafletRouteMap({
   geometryStatus,
   focusRequest,
   userLocation,
+  userHeading,
   locationStatus,
+  locationMode,
+  headingStatus,
   onLocate,
 }: {
   plan: RoutePlan;
@@ -873,13 +1010,20 @@ function LeafletRouteMap({
   geometryStatus: RouteGeometryStatus;
   focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
+  userHeading: number | null;
   locationStatus: MapLocationStatus;
+  locationMode: MapLocationMode;
+  headingStatus: MapHeadingStatus;
   onLocate: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const routeLayerRef = useRef<LayerGroup | null>(null);
   const locationLayerRef = useRef<LayerGroup | null>(null);
+  const locationMarkerRef = useRef<LeafletMarker | null>(null);
+  const locationMarkerElementRef = useRef<HTMLElement | null>(null);
+  const hasLocatedRef = useRef(false);
+  const userHeadingRef = useRef(userHeading);
   const focusRequestRef = useRef<MapFocusRequest | null>(focusRequest);
   const [ready, setReady] = useState(false);
 
@@ -910,6 +1054,8 @@ function LeafletRouteMap({
     return () => {
       active = false;
       locationLayerRef.current = null;
+      locationMarkerRef.current = null;
+      locationMarkerElementRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -1085,35 +1231,65 @@ function LeafletRouteMap({
   }, [focusRequest, plan, ready]);
 
   useEffect(() => {
-    if (!ready || !mapRef.current || !userLocation) return;
+    if (!ready || !mapRef.current) return;
+    if (!userLocation) {
+      locationLayerRef.current?.remove();
+      locationLayerRef.current = null;
+      locationMarkerRef.current = null;
+      locationMarkerElementRef.current = null;
+      hasLocatedRef.current = false;
+      return;
+    }
     const map = mapRef.current;
     let active = true;
 
     void import("leaflet").then((leafletModule) => {
       if (!active || !mapRef.current) return;
       const L = leafletModule.default;
-      locationLayerRef.current?.remove();
-      const group = L.layerGroup().addTo(mapRef.current);
-      locationLayerRef.current = group;
-      L.marker(userLocation, {
-        icon: L.divIcon({
-          className: "current-location-marker-wrapper",
-          html: '<span class="current-location-marker" aria-hidden="true"></span>',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14],
-        }),
-      })
-        .bindTooltip("현재 위치", { direction: "top", offset: [0, -12] })
-        .addTo(group);
-      map.flyTo(userLocation, Math.max(map.getZoom(), 15), { duration: 0.45 });
+      let marker = locationMarkerRef.current;
+      if (!marker) {
+        const group = L.layerGroup().addTo(mapRef.current);
+        locationLayerRef.current = group;
+        marker = L.marker(userLocation, {
+          icon: L.divIcon({
+            className: "current-location-marker-wrapper",
+            html: CURRENT_LOCATION_MARKER_HTML,
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+          }),
+        })
+          .bindTooltip("현재 위치", { direction: "top", offset: [0, -18] })
+          .addTo(group);
+        locationMarkerRef.current = marker;
+      } else {
+        marker.setLatLng(userLocation);
+      }
+      locationMarkerElementRef.current =
+        marker.getElement()?.querySelector<HTMLElement>(
+          ".current-location-marker",
+        ) ?? null;
+      updateCurrentLocationHeading(
+        locationMarkerElementRef.current,
+        userHeadingRef.current,
+      );
+
+      if (!hasLocatedRef.current) {
+        map.flyTo(userLocation, Math.max(map.getZoom(), 16), { duration: 0.45 });
+        hasLocatedRef.current = true;
+      } else {
+        map.panTo(userLocation, { animate: true, duration: 0.3 });
+      }
     });
 
     return () => {
       active = false;
-      locationLayerRef.current?.remove();
-      locationLayerRef.current = null;
     };
   }, [ready, userLocation]);
+
+  useEffect(() => {
+    userHeadingRef.current = userHeading;
+    updateCurrentLocationHeading(locationMarkerElementRef.current, userHeading);
+  }, [userHeading]);
 
   return (
     <div className="map-wrap">
@@ -1123,6 +1299,8 @@ function LeafletRouteMap({
         ready={ready}
         geometryStatus={geometryStatus}
         locationStatus={locationStatus}
+        locationMode={locationMode}
+        headingStatus={headingStatus}
         onLocate={onLocate}
       />
     </div>
@@ -1135,7 +1313,10 @@ function KakaoRouteMap({
   geometryStatus,
   focusRequest,
   userLocation,
+  userHeading,
   locationStatus,
+  locationMode,
+  headingStatus,
   onLocate,
   onError,
 }: {
@@ -1144,7 +1325,10 @@ function KakaoRouteMap({
   geometryStatus: RouteGeometryStatus;
   focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
+  userHeading: number | null;
   locationStatus: MapLocationStatus;
+  locationMode: MapLocationMode;
+  headingStatus: MapHeadingStatus;
   onLocate: () => void;
   onError: () => void;
 }) {
@@ -1152,7 +1336,10 @@ function KakaoRouteMap({
   const mapRef = useRef<KakaoMap | null>(null);
   const sdkRef = useRef<KakaoSdk | null>(null);
   const mapObjectsRef = useRef<KakaoMapObject[]>([]);
-  const locationObjectRef = useRef<KakaoMapObject | null>(null);
+  const locationObjectRef = useRef<KakaoCustomOverlay | null>(null);
+  const locationMarkerElementRef = useRef<HTMLElement | null>(null);
+  const hasLocatedRef = useRef(false);
+  const userHeadingRef = useRef(userHeading);
   const focusRequestRef = useRef<MapFocusRequest | null>(focusRequest);
   const [ready, setReady] = useState(false);
 
@@ -1187,6 +1374,7 @@ function KakaoRouteMap({
       clearMapObjects();
       locationObjectRef.current?.setMap(null);
       locationObjectRef.current = null;
+      locationMarkerElementRef.current = null;
       mapRef.current = null;
       sdkRef.current = null;
     };
@@ -1388,31 +1576,48 @@ function KakaoRouteMap({
   useEffect(() => {
     const sdk = sdkRef.current;
     const map = mapRef.current;
-    if (!ready || !sdk || !map || !userLocation) return;
+    if (!ready || !sdk || !map) return;
+    if (!userLocation) {
+      locationObjectRef.current?.setMap(null);
+      locationObjectRef.current = null;
+      locationMarkerElementRef.current = null;
+      hasLocatedRef.current = false;
+      return;
+    }
 
-    locationObjectRef.current?.setMap(null);
-    const marker = document.createElement("span");
-    marker.className = "current-location-marker";
-    marker.title = "현재 위치";
-    marker.setAttribute("aria-hidden", "true");
     const position = new sdk.maps.LatLng(userLocation[0], userLocation[1]);
-    const overlay = new sdk.maps.CustomOverlay({
-      map,
-      position,
-      content: marker,
-      xAnchor: 0.5,
-      yAnchor: 0.5,
-      zIndex: 6,
-    });
-    locationObjectRef.current = overlay;
-    map.setLevel(4);
-    map.panTo(position);
+    let overlay = locationObjectRef.current;
+    if (!overlay) {
+      const marker = createCurrentLocationMarkerElement();
+      overlay = new sdk.maps.CustomOverlay({
+        map,
+        position,
+        content: marker,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        zIndex: 6,
+      });
+      locationObjectRef.current = overlay;
+      locationMarkerElementRef.current = marker;
+    } else {
+      overlay.setPosition(position);
+    }
+    updateCurrentLocationHeading(
+      locationMarkerElementRef.current,
+      userHeadingRef.current,
+    );
 
-    return () => {
-      overlay.setMap(null);
-      if (locationObjectRef.current === overlay) locationObjectRef.current = null;
-    };
+    if (!hasLocatedRef.current) {
+      map.setLevel(4);
+      hasLocatedRef.current = true;
+    }
+    map.panTo(position);
   }, [ready, userLocation]);
+
+  useEffect(() => {
+    userHeadingRef.current = userHeading;
+    updateCurrentLocationHeading(locationMarkerElementRef.current, userHeading);
+  }, [userHeading]);
 
   return (
     <div className="map-wrap">
@@ -1426,6 +1631,8 @@ function KakaoRouteMap({
         ready={ready}
         geometryStatus={geometryStatus}
         locationStatus={locationStatus}
+        locationMode={locationMode}
+        headingStatus={headingStatus}
         onLocate={onLocate}
         showOpenStreetMapAttribution
       />
@@ -1437,13 +1644,19 @@ function RouteMap({
   plan,
   focusRequest,
   userLocation,
+  userHeading,
   locationStatus,
+  locationMode,
+  headingStatus,
   onLocate,
 }: {
   plan: RoutePlan;
   focusRequest: MapFocusRequest | null;
   userLocation: Coordinates | null;
+  userHeading: number | null;
   locationStatus: MapLocationStatus;
+  locationMode: MapLocationMode;
+  headingStatus: MapHeadingStatus;
   onLocate: () => void;
 }) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
@@ -1472,7 +1685,10 @@ function RouteMap({
         geometryStatus={geometryStatus}
         focusRequest={focusRequest}
         userLocation={userLocation}
+        userHeading={userHeading}
         locationStatus={locationStatus}
+        locationMode={locationMode}
+        headingStatus={headingStatus}
         onLocate={onLocate}
         onError={useLeafletFallback}
       />
@@ -1486,7 +1702,10 @@ function RouteMap({
         geometryStatus={geometryStatus}
         focusRequest={focusRequest}
         userLocation={userLocation}
+        userHeading={userHeading}
         locationStatus={locationStatus}
+        locationMode={locationMode}
+        headingStatus={headingStatus}
         onLocate={onLocate}
       />
     );
@@ -1500,6 +1719,8 @@ function RouteMap({
         ready={false}
         geometryStatus={geometryStatus}
         locationStatus={locationStatus}
+        locationMode={locationMode}
+        headingStatus={headingStatus}
         onLocate={onLocate}
       />
     </div>
@@ -1527,7 +1748,20 @@ export default function Home() {
   const [mapUserLocation, setMapUserLocation] = useState<Coordinates | null>(null);
   const [mapLocationStatus, setMapLocationStatus] =
     useState<MapLocationStatus>("idle");
+  const [mapLocationMode, setMapLocationMode] =
+    useState<MapLocationMode>("idle");
+  const [mapHeadingStatus, setMapHeadingStatus] =
+    useState<MapHeadingStatus>("idle");
+  const [mapDeviceHeading, setMapDeviceHeading] = useState<number | null>(null);
+  const [mapTravelHeading, setMapTravelHeading] = useState<number | null>(null);
   const mapLocationRequestIdRef = useRef(0);
+  const mapLocationWatchIdRef = useRef<number | null>(null);
+  const mapOrientationCleanupRef = useRef<(() => void) | null>(null);
+  const mapHeadingTimerRef = useRef<number | null>(null);
+  const mapHeadingFallbackTimerRef = useRef<number | null>(null);
+  const mapPendingHeadingRef = useRef<number | null>(null);
+  const mapLastHeadingRef = useRef<number | null>(null);
+  const mapHasLocationFixRef = useRef(false);
   const mapPanelRef = useRef<HTMLElement>(null);
   const [stations, setStations] = useState(STATIONS);
   const [liveBikeStatus, setLiveBikeStatus] = useState<
@@ -1547,13 +1781,6 @@ export default function Home() {
 
     return () => window.clearTimeout(timeoutId);
   }, []);
-
-  useEffect(
-    () => () => {
-      mapLocationRequestIdRef.current += 1;
-    },
-    [],
-  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1715,61 +1942,267 @@ export default function Home() {
     setErrorMessage("");
   };
 
-  const locateMapUser = useCallback(() => {
-    const requestId = mapLocationRequestIdRef.current + 1;
-    mapLocationRequestIdRef.current = requestId;
+  const teardownMapOrientation = useCallback(() => {
+    mapOrientationCleanupRef.current?.();
+    mapOrientationCleanupRef.current = null;
+    if (mapHeadingTimerRef.current !== null) {
+      window.clearTimeout(mapHeadingTimerRef.current);
+      mapHeadingTimerRef.current = null;
+    }
+    if (mapHeadingFallbackTimerRef.current !== null) {
+      window.clearTimeout(mapHeadingFallbackTimerRef.current);
+      mapHeadingFallbackTimerRef.current = null;
+    }
+    mapPendingHeadingRef.current = null;
+    mapLastHeadingRef.current = null;
+  }, []);
+
+  const stopMapLocationTracking = useCallback(
+    (clearMarker = false) => {
+      mapLocationRequestIdRef.current += 1;
+      if (mapLocationWatchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
+        mapLocationWatchIdRef.current = null;
+      }
+      teardownMapOrientation();
+      setMapLocationMode("idle");
+      setMapLocationStatus("idle");
+      setMapHeadingStatus("idle");
+      setMapDeviceHeading(null);
+      setMapTravelHeading(null);
+      mapHasLocationFixRef.current = false;
+      if (clearMarker) setMapUserLocation(null);
+    },
+    [teardownMapOrientation],
+  );
+
+  useEffect(
+    () => () => {
+      mapLocationRequestIdRef.current += 1;
+      if (mapLocationWatchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
+        mapLocationWatchIdRef.current = null;
+      }
+      teardownMapOrientation();
+    },
+    [teardownMapOrientation],
+  );
+
+  const startMapLocationTracking = useCallback(() => {
     setMapFocusRequest(null);
     if (!navigator.geolocation) {
+      setMapLocationMode("idle");
       setMapLocationStatus("error");
       return;
     }
 
-    setMapLocationStatus("loading");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (mapLocationRequestIdRef.current !== requestId) return;
-        setMapUserLocation([
-          position.coords.latitude,
-          position.coords.longitude,
-        ]);
-        setMapLocationStatus("ready");
-      },
-      () => {
-        if (mapLocationRequestIdRef.current !== requestId) return;
-        setMapLocationStatus("error");
-      },
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
-    );
-  }, []);
-
-  const focusMapPoint = useCallback((target: MapFocusTarget) => {
-    mapLocationRequestIdRef.current += 1;
-    setMapLocationStatus("idle");
-    setMapFocusRequest((currentRequest) => ({
-      target,
-      requestId: (currentRequest?.requestId ?? 0) + 1,
-    }));
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      window.requestAnimationFrame(() => {
-        mapPanelRef.current?.scrollIntoView({
-          behavior: reduceMotion ? "auto" : "smooth",
-          block: "start",
-        });
-      });
+    if (mapLocationWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
+      mapLocationWatchIdRef.current = null;
     }
-  }, []);
+    teardownMapOrientation();
+    const requestId = mapLocationRequestIdRef.current + 1;
+    mapLocationRequestIdRef.current = requestId;
+    setMapLocationMode("tracking");
+    setMapLocationStatus("loading");
+    setMapHeadingStatus("idle");
+    setMapDeviceHeading(null);
+    setMapTravelHeading(null);
+    mapHasLocationFixRef.current = false;
+
+    try {
+      mapLocationWatchIdRef.current = navigator.geolocation.watchPosition(
+        (position) => {
+          if (mapLocationRequestIdRef.current !== requestId) return;
+          const travelHeading =
+            Number.isFinite(position.coords.heading) &&
+            (position.coords.speed === null || position.coords.speed >= 0.8)
+              ? normalizeHeading(Number(position.coords.heading))
+              : null;
+          setMapUserLocation([
+            position.coords.latitude,
+            position.coords.longitude,
+          ]);
+          setMapTravelHeading(travelHeading);
+          setMapLocationStatus("ready");
+          mapHasLocationFixRef.current = true;
+        },
+        (error) => {
+          if (mapLocationRequestIdRef.current !== requestId) return;
+          if (error.code !== error.PERMISSION_DENIED) {
+            setMapLocationStatus(
+              mapHasLocationFixRef.current ? "ready" : "error",
+            );
+            return;
+          }
+          if (mapLocationWatchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(mapLocationWatchIdRef.current);
+            mapLocationWatchIdRef.current = null;
+          }
+          teardownMapOrientation();
+          setMapLocationMode("idle");
+          setMapLocationStatus("error");
+          setMapHeadingStatus("idle");
+          setMapDeviceHeading(null);
+          setMapTravelHeading(null);
+          setMapUserLocation(null);
+          mapHasLocationFixRef.current = false;
+        },
+        { enableHighAccuracy: true, timeout: 15_000, maximumAge: 2_000 },
+      );
+    } catch {
+      setMapLocationMode("idle");
+      setMapLocationStatus("error");
+      setMapUserLocation(null);
+      mapHasLocationFixRef.current = false;
+    }
+  }, [teardownMapOrientation]);
+
+  const enableMapHeading = useCallback(async () => {
+    const requestId = mapLocationRequestIdRef.current;
+    setMapHeadingStatus("requesting");
+    const orientationConstructor =
+      typeof DeviceOrientationEvent === "undefined"
+        ? null
+        : (DeviceOrientationEvent as OrientationEventConstructor);
+
+    if (!orientationConstructor) {
+      if (mapLocationRequestIdRef.current !== requestId) return;
+      setMapLocationMode("heading");
+      setMapHeadingStatus("fallback");
+      return;
+    }
+
+    try {
+      if (typeof orientationConstructor.requestPermission === "function") {
+        const permission = await orientationConstructor.requestPermission();
+        if (mapLocationRequestIdRef.current !== requestId) return;
+        if (permission !== "granted") {
+          setMapLocationMode("tracking");
+          setMapHeadingStatus("denied");
+          return;
+        }
+      }
+    } catch {
+      if (mapLocationRequestIdRef.current !== requestId) return;
+      setMapLocationMode("tracking");
+      setMapHeadingStatus("denied");
+      return;
+    }
+
+    if (mapLocationRequestIdRef.current !== requestId) return;
+    teardownMapOrientation();
+    const queueHeading = (heading: number | null) => {
+      if (heading === null) return;
+      if (mapHeadingFallbackTimerRef.current !== null) {
+        window.clearTimeout(mapHeadingFallbackTimerRef.current);
+        mapHeadingFallbackTimerRef.current = null;
+      }
+      setMapHeadingStatus("active");
+      mapPendingHeadingRef.current = heading;
+      if (mapHeadingTimerRef.current !== null) return;
+      mapHeadingTimerRef.current = window.setTimeout(() => {
+        mapHeadingTimerRef.current = null;
+        const nextHeading = mapPendingHeadingRef.current;
+        mapPendingHeadingRef.current = null;
+        if (nextHeading === null) return;
+        const previousHeading = mapLastHeadingRef.current;
+        const delta =
+          previousHeading === null
+            ? 0
+            : headingDelta(previousHeading, nextHeading);
+        if (previousHeading !== null && Math.abs(delta) < 0.8) return;
+        const smoothedHeading =
+          previousHeading === null
+            ? nextHeading
+            : normalizeHeading(previousHeading + delta * 0.28);
+        mapLastHeadingRef.current = smoothedHeading;
+        setMapDeviceHeading(smoothedHeading);
+      }, 80);
+    };
+    const handleAbsoluteOrientation = (event: Event) => {
+      queueHeading(getDeviceHeading(event as DeviceOrientationEvent, true));
+    };
+    const handleOrientation = (event: Event) => {
+      queueHeading(getDeviceHeading(event as DeviceOrientationEvent));
+    };
+    window.addEventListener(
+      "deviceorientationabsolute",
+      handleAbsoluteOrientation,
+    );
+    window.addEventListener("deviceorientation", handleOrientation);
+    mapOrientationCleanupRef.current = () => {
+      window.removeEventListener(
+        "deviceorientationabsolute",
+        handleAbsoluteOrientation,
+      );
+      window.removeEventListener("deviceorientation", handleOrientation);
+    };
+    setMapLocationMode("heading");
+    mapHeadingFallbackTimerRef.current = window.setTimeout(() => {
+      mapHeadingFallbackTimerRef.current = null;
+      if (
+        mapLocationRequestIdRef.current === requestId &&
+        mapLastHeadingRef.current === null
+      ) {
+        setMapHeadingStatus("fallback");
+      }
+    }, 1_500);
+  }, [teardownMapOrientation]);
+
+  const locateMapUser = useCallback(() => {
+    if (mapLocationMode === "idle" || mapLocationStatus === "error") {
+      startMapLocationTracking();
+      return;
+    }
+    if (mapLocationMode === "tracking") {
+      void enableMapHeading();
+      return;
+    }
+
+    setMapFocusRequest(null);
+    setMapUserLocation((currentLocation) =>
+      currentLocation
+        ? [currentLocation[0], currentLocation[1]]
+        : currentLocation,
+    );
+  }, [
+    enableMapHeading,
+    mapLocationMode,
+    mapLocationStatus,
+    startMapLocationTracking,
+  ]);
+
+  const focusMapPoint = useCallback(
+    (target: MapFocusTarget) => {
+      stopMapLocationTracking(true);
+      setMapFocusRequest((currentRequest) => ({
+        target,
+        requestId: (currentRequest?.requestId ?? 0) + 1,
+      }));
+      if (window.matchMedia("(max-width: 900px)").matches) {
+        const reduceMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+        window.requestAnimationFrame(() => {
+          mapPanelRef.current?.scrollIntoView({
+            behavior: reduceMotion ? "auto" : "smooth",
+            block: "start",
+          });
+        });
+      }
+    },
+    [stopMapLocationTracking],
+  );
 
   const resetRoute = () => {
-    mapLocationRequestIdRef.current += 1;
+    stopMapLocationTracking(true);
     setOriginQuery("");
     setDestinationQuery("");
     setOrigin(null);
     setDestination(null);
     setCommittedRoute(null);
     setMapFocusRequest(null);
-    setMapUserLocation(null);
-    setMapLocationStatus("idle");
     setSelectedEndStationId(undefined);
     setAlternativesOpen(false);
     setRouteDetailsOpen(true);
@@ -1777,6 +2210,11 @@ export default function Home() {
     setNotice("");
     window.requestAnimationFrame(() => document.getElementById("origin")?.focus());
   };
+
+  const mapUserHeading =
+    mapLocationMode === "heading"
+      ? (mapDeviceHeading ?? mapTravelHeading)
+      : null;
 
   return (
     <main className="app-shell">
@@ -2187,7 +2625,10 @@ export default function Home() {
               plan={plan}
               focusRequest={mapFocusRequest}
               userLocation={mapUserLocation}
+              userHeading={mapUserHeading}
               locationStatus={mapLocationStatus}
+              locationMode={mapLocationMode}
+              headingStatus={mapHeadingStatus}
               onLocate={locateMapUser}
             />
           ) : (
