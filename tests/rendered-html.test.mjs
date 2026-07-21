@@ -59,7 +59,9 @@ test("draws road geometry instead of manufactured map curves", async () => {
 
   assert.doesNotMatch(pageSource, /createCurve/);
   assert.match(pageSource, /geometry\.bike\.path/);
-  assert.match(pageSource, /openstreetmap\.org\/fixthemap/);
+  assert.match(pageSource, /OpenStreetMap contributors/);
+  assert.match(pageSource, /attributionControl: true/);
+  assert.doesNotMatch(pageSource, /openstreetmap\.org\/fixthemap|map-route-source/);
   assert.match(routeSource, /routing\.openstreetmap\.de/);
   assert.match(routeSource, /routed-foot/);
   assert.match(routeSource, /routed-bike/);

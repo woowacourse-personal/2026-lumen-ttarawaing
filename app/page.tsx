@@ -700,11 +700,13 @@ function RouteMapChrome({
   ready,
   providerLabel,
   geometryStatus,
+  showOpenStreetMapAttribution = false,
 }: {
   plan: RoutePlan;
   ready: boolean;
   providerLabel: string;
   geometryStatus: RouteGeometryStatus;
+  showOpenStreetMapAttribution?: boolean;
 }) {
   const routeModeLabel = {
     loading: "실제 도로 경로 계산 중",
@@ -730,32 +732,16 @@ function RouteMapChrome({
         </span>
         <span className={`map-mode is-${geometryStatus}`}>{routeModeLabel}</span>
       </div>
-      <div className={`map-route-source is-${geometryStatus}`}>
-        {hasOpenStreetMapRoute ? (
-          <>
-            <span>경로</span>
-            <a
-              href="https://www.openstreetmap.org/copyright"
-              target="_blank"
-              rel="noreferrer"
-            >
-              © OpenStreetMap 기여자
-            </a>
-            <span>·</span>
-            <a
-              href="https://www.openstreetmap.org/fixthemap"
-              target="_blank"
-              rel="noreferrer"
-            >
-              오류 제보
-            </a>
-          </>
-        ) : geometryStatus === "loading" ? (
-          "도로 경로 계산 중"
-        ) : (
-          "예상 연결선으로 표시 중"
-        )}
-      </div>
+      {showOpenStreetMapAttribution && hasOpenStreetMapRoute ? (
+        <a
+          className="map-route-attribution"
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer"
+        >
+          © OpenStreetMap contributors
+        </a>
+      ) : null}
       <div className="map-legend">
         <div>
           <span className="legend-line walk" />
@@ -806,10 +792,12 @@ function LeafletRouteMap({
         zoomControl: false,
         attributionControl: true,
       }).setView([37.561, 127.006], 13);
+      map.attributionControl.setPrefix(false);
       L.control.zoom({ position: "bottomright" }).addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
-        attribution: "&copy; OpenStreetMap",
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
       }).addTo(map);
       mapRef.current = map;
       setReady(true);
@@ -1173,6 +1161,7 @@ function KakaoRouteMap({
         ready={ready}
         providerLabel="카카오맵 실제 지도"
         geometryStatus={geometryStatus}
+        showOpenStreetMapAttribution
       />
     </div>
   );

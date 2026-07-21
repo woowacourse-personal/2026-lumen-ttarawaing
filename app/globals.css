@@ -1263,49 +1263,24 @@ input:focus-visible {
   color: #a1523e;
 }
 
-.map-route-source {
+.map-route-attribution {
   position: absolute;
   z-index: 400;
-  top: 20px;
-  right: 20px;
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 10px;
-  border: 1px solid rgba(213, 224, 217, 0.95);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 5px 18px rgba(36, 57, 48, 0.08);
-  color: #748079;
-  backdrop-filter: blur(12px);
-  font-size: 8px;
-  font-weight: 620;
-}
-
-.map-route-source a {
-  color: #52655c;
+  right: 8px;
+  bottom: 4px;
+  color: #5f6e67;
+  font-size: 9px;
+  font-weight: 560;
+  line-height: 1.2;
   text-decoration: none;
+  text-shadow:
+    0 1px 2px white,
+    0 0 4px white;
 }
 
-.map-route-source a:hover {
+.map-route-attribution:hover {
   color: var(--green-dark);
   text-decoration: underline;
-}
-
-.map-route-source.is-loading::before {
-  width: 6px;
-  height: 6px;
-  border: 1.5px solid #c7d6cf;
-  border-top-color: var(--green);
-  border-radius: 50%;
-  animation: spin 800ms linear infinite;
-  content: "";
-}
-
-.map-route-source.is-fallback {
-  border-color: rgba(236, 207, 199, 0.96);
-  color: #9b5c4b;
 }
 
 .map-legend {
@@ -1516,11 +1491,6 @@ input:focus-visible {
   .map-tools {
     top: 14px;
     left: 14px;
-  }
-
-  .map-route-source {
-    top: 55px;
-    right: 14px;
   }
 
   .map-mode {
