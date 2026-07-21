@@ -1383,11 +1383,11 @@ input:focus-visible {
 .map-guide-controls {
   position: absolute;
   z-index: 410;
+  right: 20px;
   bottom: 96px;
-  left: 20px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 8px;
 }
 
@@ -1670,8 +1670,8 @@ input:focus-visible {
   }
 
   .map-guide-controls {
+    right: 14px;
     bottom: 88px;
-    left: 14px;
   }
 
   .map-legend {

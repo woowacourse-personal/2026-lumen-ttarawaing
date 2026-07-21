@@ -126,7 +126,7 @@ test("shows a centered spinner instead of temporary dotted route geometry", asyn
   assert.match(routeLoadingRule, /pointer-events:\s*none/);
 });
 
-test("locates the user from a lower-left map control on both map providers", async () => {
+test("locates the user from a lower-right map control on both map providers", async () => {
   const [pageSource, styles, kakaoSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -144,8 +144,9 @@ test("locates the user from a lower-left map control on both map providers", asy
   assert.match(pageSource, /map\.panTo\(position\)/);
   assert.match(pageSource, /current-location-marker/);
   assert.match(kakaoSource, /panTo\(position: KakaoLatLng\)/);
+  assert.match(guideControlsRule, /right:\s*20px/);
   assert.match(guideControlsRule, /bottom:\s*96px/);
-  assert.match(guideControlsRule, /left:\s*20px/);
+  assert.match(guideControlsRule, /align-items:\s*flex-end/);
 });
 
 test("fills the desktop map to the top beside the left-only header", async () => {
