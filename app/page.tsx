@@ -1635,6 +1635,20 @@ export default function Home() {
     setErrorMessage("");
   };
 
+  const resetRoute = () => {
+    setOriginQuery("");
+    setDestinationQuery("");
+    setOrigin(null);
+    setDestination(null);
+    setCommittedRoute(null);
+    setSelectedEndStationId(undefined);
+    setAlternativesOpen(false);
+    setRouteDetailsOpen(true);
+    setErrorMessage("");
+    setNotice("");
+    window.requestAnimationFrame(() => document.getElementById("origin")?.focus());
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -1712,6 +1726,12 @@ export default function Home() {
                 최적 경로 찾기
                 <ArrowRight className="button-arrow" size={18} aria-hidden="true" />
               </button>
+
+              {plan ? (
+                <button className="reset-route-button" type="button" onClick={resetRoute}>
+                  다시 입력하기
+                </button>
+              ) : null}
 
               <div className="route-history" aria-label="최근 검색 경로">
                 <span>히스토리</span>

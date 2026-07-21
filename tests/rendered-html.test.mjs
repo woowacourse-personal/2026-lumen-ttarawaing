@@ -74,6 +74,19 @@ test("stores and reopens recent route history on this device", async () => {
   assert.doesNotMatch(pageSource, /QUICK_ROUTES|chooseQuickRoute/);
 });
 
+test("clears the active route from a dedicated re-entry button", async () => {
+  const pageSource = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(pageSource, /className="reset-route-button"/);
+  assert.match(pageSource, /다시 입력하기/);
+  assert.match(pageSource, /const resetRoute = \(\) =>/);
+  assert.match(pageSource, /setCommittedRoute\(null\)/);
+  assert.match(pageSource, /document\.getElementById\("origin"\)\?\.focus\(\)/);
+});
+
 test("draws road geometry instead of manufactured map curves", async () => {
   const [pageSource, routeSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
