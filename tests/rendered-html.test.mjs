@@ -523,6 +523,22 @@ test("focuses the map when each route timeline place is selected", async () => {
   assert.match(pageSource, /mapLocationRequestIdRef\.current \+= 1/);
   assert.match(pageSource, /stopMapLocationTracking\(true\)/);
   assert.match(
+    pageSource,
+    /<button\s+className="map-station-card"[\s\S]*?type="button"[\s\S]*?aria-label=\{`\$\{plan\.endStation\.name\} 반납 대여소를 지도에서 보기`\}[\s\S]*?onClick=\{onFocusEndStation\}/,
+  );
+  assert.match(
+    pageSource,
+    /onFocusEndStation=\{\(\) => focusMapPoint\("endStation"\)\}/,
+  );
+  assert.ok(
+    (pageSource.match(/onFocusEndStation=\{onFocusEndStation\}/g) ?? []).length >= 4,
+  );
+  assert.match(pageSource, /plan\?\.\[target\]\.coordinates/);
+  assert.match(
+    pageSource,
+    /requestId:\s*\(currentRequest\?\.requestId \?\? 0\) \+ 1/,
+  );
+  assert.match(
     styles,
     /\.timeline-focus-button\s*\{[^}]*cursor:\s*pointer[^}]*text-align:\s*left/s,
   );
@@ -530,6 +546,11 @@ test("focuses the map when each route timeline place is selected", async () => {
     styles,
     /\.station-focus-button\s*\{[^}]*cursor:\s*pointer[^}]*text-align:\s*left/s,
   );
+  assert.match(
+    styles,
+    /\.map-station-card\s*\{[^}]*appearance:\s*none[^}]*cursor:\s*pointer[^}]*color:\s*inherit[^}]*text-align:\s*left/s,
+  );
+  assert.match(styles, /button:focus-visible,[\s\S]*?outline:\s*3px solid/);
 });
 
 test("scrolls and focuses the recommendation after the primary route search", async () => {

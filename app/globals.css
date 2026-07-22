@@ -1868,12 +1868,14 @@ input:focus-visible {
 }
 
 .map-station-card {
+  appearance: none;
   position: absolute;
   z-index: 400;
   bottom: 20px;
   left: 20px;
   display: grid;
   min-width: 315px;
+  cursor: pointer;
   grid-template-columns: 36px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
@@ -1881,6 +1883,8 @@ input:focus-visible {
   border: 1px solid rgba(208, 221, 213, 0.96);
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.95);
+  color: inherit;
+  text-align: left;
   box-shadow: var(--shadow);
   backdrop-filter: blur(16px);
 }

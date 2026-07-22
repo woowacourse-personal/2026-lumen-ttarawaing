@@ -1048,6 +1048,7 @@ function RouteMapChrome({
   locationMode,
   headingStatus,
   onLocate,
+  onFocusEndStation,
   showOpenStreetMapAttribution = false,
 }: {
   plan: RoutePlan;
@@ -1057,6 +1058,7 @@ function RouteMapChrome({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
+  onFocusEndStation: () => void;
   showOpenStreetMapAttribution?: boolean;
 }) {
   const hasOpenStreetMapRoute =
@@ -1140,7 +1142,12 @@ function RouteMapChrome({
           </div>
         </div>
       </div>
-      <div className="map-station-card">
+      <button
+        className="map-station-card"
+        type="button"
+        aria-label={`${plan.endStation.name} 반납 대여소를 지도에서 보기`}
+        onClick={onFocusEndStation}
+      >
         <div className="station-mini-icon">
           <Bike size={18} aria-hidden="true" />
         </div>
@@ -1152,7 +1159,7 @@ function RouteMapChrome({
           <b>{formatDistance(plan.walkFromMeters)}</b>
           <small>목적지까지</small>
         </div>
-      </div>
+      </button>
     </>
   );
 }
@@ -1171,6 +1178,7 @@ function LeafletRouteMap({
   locationMode,
   headingStatus,
   onLocate,
+  onFocusEndStation,
   onMapDragStart,
 }: {
   plan: RoutePlan;
@@ -1186,6 +1194,7 @@ function LeafletRouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
+  onFocusEndStation: () => void;
   onMapDragStart: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -1561,6 +1570,7 @@ function LeafletRouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
+        onFocusEndStation={onFocusEndStation}
         showOpenStreetMapAttribution={locationMode === "heading"}
       />
     </div>
@@ -1581,6 +1591,7 @@ function KakaoRouteMap({
   locationMode,
   headingStatus,
   onLocate,
+  onFocusEndStation,
   onMapDragStart,
   onError,
 }: {
@@ -1597,6 +1608,7 @@ function KakaoRouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
+  onFocusEndStation: () => void;
   onMapDragStart: () => void;
   onError: () => void;
 }) {
@@ -1973,6 +1985,7 @@ function KakaoRouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
+        onFocusEndStation={onFocusEndStation}
         showOpenStreetMapAttribution
       />
     </div>
@@ -1993,6 +2006,7 @@ function RouteMap({
   locationMode,
   headingStatus,
   onLocate,
+  onFocusEndStation,
   onMapDragStart,
 }: {
   plan: RoutePlan;
@@ -2008,6 +2022,7 @@ function RouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
+  onFocusEndStation: () => void;
   onMapDragStart: () => void;
 }) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
@@ -2043,6 +2058,7 @@ function RouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
+        onFocusEndStation={onFocusEndStation}
         onMapDragStart={onMapDragStart}
         onError={useLeafletFallback}
       />
@@ -2064,6 +2080,7 @@ function RouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
+        onFocusEndStation={onFocusEndStation}
         onMapDragStart={onMapDragStart}
       />
     );
@@ -2080,6 +2097,7 @@ function RouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
+        onFocusEndStation={onFocusEndStation}
       />
     </div>
   );
@@ -3435,6 +3453,7 @@ export default function Home() {
               locationMode={mapLocationMode}
               headingStatus={mapHeadingStatus}
               onLocate={locateMapUser}
+              onFocusEndStation={() => focusMapPoint("endStation")}
               onMapDragStart={minimizeMobileDetailsFromMapDrag}
             />
           ) : (
