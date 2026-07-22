@@ -9,9 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Crosshair,
-  ExternalLink,
   Footprints,
-  LocateFixed,
   MapPin,
   Navigation,
   Search,
@@ -67,7 +65,6 @@ import {
   requestCurrentPositionOnce,
 } from "./current-location-request";
 import { requestDeviceOrientationPermission } from "./device-orientation-permission";
-import { splitKakaoRoutePoints } from "./kakao-route-groups";
 import {
   consumeLocationFocusRequest,
   getRotatingMapCanvasSide,
@@ -492,28 +489,6 @@ function applyRouteGeometryToPlan(
     ...plan,
     ...calculateRouteGeometryMetrics(geometry, transferStopCount),
   };
-}
-
-function buildKakaoRoutePoint(point: { name: string; coordinates: Coordinates }) {
-  const [latitude, longitude] = point.coordinates;
-  return `${encodeURIComponent(point.name)},${latitude},${longitude}`;
-}
-
-function getKakaoRoutePoints(plan: RoutePlan, transferStops: Station[]) {
-  return [
-    plan.origin,
-    plan.startStation,
-    ...transferStops,
-    plan.endStation,
-    plan.destination,
-  ];
-}
-
-function buildKakaoBicycleRouteUrls(plan: RoutePlan, transferStops: Station[]) {
-  return splitKakaoRoutePoints(getKakaoRoutePoints(plan, transferStops)).map(
-    (points) =>
-      `https://map.kakao.com/link/by/bicycle/${points.map(buildKakaoRoutePoint).join("/")}`,
-  );
 }
 
 function getPassLabel(passType: PassType) {
@@ -2330,22 +2305,6 @@ export default function Home() {
     routeProgressState,
     routeProgressKey,
   );
-  const kakaoRoutePoints = useMemo(
-    () => (plan ? getKakaoRoutePoints(plan, transferStops) : []),
-    [plan, transferStops],
-  );
-  const kakaoRoutePointGroups = useMemo(
-    () => splitKakaoRoutePoints(kakaoRoutePoints),
-    [kakaoRoutePoints],
-  );
-  const kakaoRouteUrls = useMemo(
-    () =>
-      plan && passRouteStatus !== "loading"
-        ? buildKakaoBicycleRouteUrls(plan, transferStops)
-        : [],
-    [passRouteStatus, plan, transferStops],
-  );
-
   useEffect(() => {
     if (!committedRoute) {
       completedRouteNoticeKeyRef.current = null;
@@ -3473,81 +3432,6 @@ export default function Home() {
                 </ol>
               ) : null}
 
-              <div className="data-note">
-                <LocateFixed size={15} aria-hidden="true" />
-                <span>
-                  장소 검색은 <strong>카카오맵 실제 데이터</strong>, 대여소 위치는
-                  서울시 공식 데이터와 서울자전거 운영 목록(
-                  {STATIONS.length.toLocaleString("ko-KR")}곳)을 사용해요. {" "}
-                  이용권 경유 대여소는 실제 자전거 도로 경로와 구간별 예상 시간을
-                  기준으로 추천해요. {" "}
-                  {liveBikeStatus === "ready"
-                    ? "대여 가능 자전거 수는 실시간 현황을 반영했어요."
-                    : liveBikeStatus === "loading"
-                      ? "대여 가능 자전거 수를 확인하고 있어요."
-                      : "실시간 수량 연결이 지연되어 최근 운영 목록을 사용 중이에요."}
-                  {" "}실시간 수량과 임시 운영 상태는 이동 중 바뀔 수 있어요. 반납
-                  가능 여부와 경로 시간은 실제 출발 전 따릉이·지도 앱에서 다시 확인해
-                  주세요.
-                  {" "}
-                  <a
-                    href={stationCatalog.source.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    데이터 출처: 서울 열린데이터광장 · 2026년 6월 기준
-                  </a>
-                </span>
-              </div>
-
-              {passRouteStatus !== "loading" ? (
-                <>
-                  {kakaoRouteUrls.map((url, index) => (
-                    <a
-                      className="kakao-link"
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      key={url}
-                      aria-label={`카카오맵 자전거 길찾기 ${index + 1}/${kakaoRouteUrls.length} 구간 열기`}
-                    >
-                      <span className="kakao-link-icon">
-                        <Navigation size={16} fill="currentColor" aria-hidden="true" />
-                      </span>
-                      <span className="kakao-link-copy">
-                        <strong>
-                          카카오맵에서 이어보기
-                          {kakaoRouteUrls.length > 1
-                            ? ` ${index + 1}/${kakaoRouteUrls.length}`
-                            : ""}
-                        </strong>
-                        <small>
-                          {kakaoRoutePointGroups[index]?.length ?? 0}개 지점 자동 입력
-                        </small>
-                      </span>
-                      <ExternalLink
-                        className="kakao-link-arrow"
-                        size={15}
-                        aria-hidden="true"
-                      />
-                    </a>
-                  ))}
-                  <div className="kakao-route-preview" aria-label="카카오맵에 전달할 경로">
-                    {kakaoRoutePoints.map((point, index) => (
-                      <Fragment key={`${point.id}-${index}`}>
-                        {index ? <ArrowRight size={11} aria-hidden="true" /> : null}
-                        <span>{point.name}</span>
-                      </Fragment>
-                    ))}
-                  </div>
-                  <p className="kakao-route-note">
-                    {kakaoRouteUrls.length > 1
-                      ? `카카오맵 경유지 제한에 맞춰 ${kakaoRouteUrls.length}개 구간으로 나눴어요. 버튼을 순서대로 열어 주세요.`
-                      : "카카오맵 자전거 경로로 이어서 열어요."}
-                    {" "}첫·마지막 도보 구간은 따라와잉 안내를 확인해 주세요.
-                  </p>
-                </>
-              ) : null}
               </section>
             ) : null}
           </div>

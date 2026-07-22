@@ -207,11 +207,10 @@ test("builds and validates the minimum number of road-routed transfer stops", as
   assert.match(routeSource, /raceWithAbort/);
 });
 
-test("shows transfer stops consistently in the timeline, maps, and Kakao continuation", async () => {
-  const [pageSource, styles, kakaoGroupsSource] = await Promise.all([
+test("shows transfer stops consistently in the timeline and maps", async () => {
+  const [pageSource, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-    readFile(new URL("../app/kakao-route-groups.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(pageSource, /bikeLegs\.map\(\(leg, index\)/);
@@ -220,12 +219,14 @@ test("shows transfer stops consistently in the timeline, maps, and Kakao continu
   assert.match(pageSource, /transferStops\.length \+ 2/);
   assert.equal((pageSource.match(/transferStops\.forEach\(\(station, index\)/g) ?? []).length, 2);
   assert.match(pageSource, /\.\.\.transferStops/);
-  assert.match(pageSource, /카카오맵 자전거 경로로 이어서 열어요/);
-  assert.doesNotMatch(pageSource, /모든 경유 지점을 하나의 자전거 경로로 열어요/);
-  assert.match(kakaoGroupsSource, /KAKAO_MAX_WAYPOINTS = 5/);
-  assert.match(kakaoGroupsSource, /startIndex \+= group\.length - 1/);
-  assert.match(pageSource, /카카오맵 경유지 제한에 맞춰/);
-  assert.doesNotMatch(pageSource, /4개 지점 자동 입력|네 지점을 하나의/);
+  assert.doesNotMatch(
+    pageSource,
+    /data-note|카카오맵 실제 데이터|서울자전거 운영 목록|데이터 출처: 서울 열린데이터광장|kakao-link|카카오맵에서 이어보기|kakao-route-preview|카카오맵에 전달할 경로|kakao-route-note|첫·마지막 도보 구간/,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.data-note|\.kakao-link(?:\W|$)|\.kakao-route-preview|\.kakao-route-note/,
+  );
   assert.match(pageSource, /이 경로를 이용권에 안전한 경로라고 안내할 수 없어요/);
   assert.match(pageSource, /passType === "none" \? "not-needed" : "unavailable"/);
   assert.match(pageSource, /실시간 대여소[\s\S]*이동 중 바뀔 수 있어요/);
@@ -409,7 +410,7 @@ test("does not imply live return-station availability", async () => {
   );
 
   assert.doesNotMatch(pageSource, /운영 확인|운영 목록 기준/);
-  assert.match(pageSource, /반납[\s\S]{0,40}가능 여부와 경로 시간은 실제 출발 전/);
+  assert.doesNotMatch(pageSource, /반납 가능/);
 });
 
 test("uses clear unavailable-data copy and exposes fallback route warnings", async () => {
