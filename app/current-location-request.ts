@@ -22,6 +22,19 @@ export function createLatestRequestGate(): LatestRequestGate {
 
 export type CurrentPositionProvider = Pick<Geolocation, "getCurrentPosition">;
 
+function toGeolocationPositionError(error: unknown): GeolocationPositionError {
+  return {
+    code: 2,
+    message:
+      error instanceof Error
+        ? error.message
+        : "Current position request failed.",
+    PERMISSION_DENIED: 1,
+    POSITION_UNAVAILABLE: 2,
+    TIMEOUT: 3,
+  };
+}
+
 export function requestCurrentPositionOnce({
   geolocation,
   gate,
@@ -55,10 +68,6 @@ export function requestCurrentPositionOnce({
     );
   } catch (error: unknown) {
     if (!gate.isCurrent(requestId)) return;
-    onError(
-      (error instanceof Error
-        ? error
-        : new Error("Current position request failed.")) as GeolocationPositionError,
-    );
+    onError(toGeolocationPositionError(error));
   }
 }
