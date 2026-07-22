@@ -532,6 +532,30 @@ test("focuses the map when each route timeline place is selected", async () => {
   );
 });
 
+test("scrolls and focuses the recommendation after the primary route search", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pageSource, /onClick=\{findRoute\}/);
+  assert.match(pageSource, /if \(!commitRoute\(\)\) return/);
+  assert.match(pageSource, /pendingResultFocusRef\.current = true/);
+  assert.match(pageSource, /ref=\{resultSectionRef\}/);
+  assert.match(pageSource, /tabIndex=\{-1\}/);
+  assert.match(pageSource, /resultSection\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(
+    pageSource,
+    /resultSection\.scrollIntoView\(\{[\s\S]*?behavior: reduceMotion \? "auto" : "smooth"[\s\S]*?block: "start"/,
+  );
+  assert.match(pageSource, /window\.cancelAnimationFrame\(frameId\)/);
+  assert.match(
+    styles,
+    /\.result-section\s*\{[^}]*scroll-margin-block-start:\s*12px/s,
+  );
+  assert.match(styles, /scroll-margin-block-start:\s*76px/);
+});
+
 test("summarizes route time as icon and duration in travel order", async () => {
   const [pageSource, recommendationSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

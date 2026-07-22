@@ -658,6 +658,16 @@ input:focus-visible {
 
 .result-section {
   padding: 27px 30px 38px;
+  scroll-margin-block-start: 12px;
+}
+
+.result-section:focus {
+  outline: none;
+}
+
+.result-section:focus-visible {
+  outline: 3px solid rgba(0, 167, 123, 0.24);
+  outline-offset: -3px;
 }
 
 .result-heading {
@@ -2017,6 +2027,7 @@ input:focus-visible {
 
   .result-section {
     padding: 24px 20px 34px;
+    scroll-margin-block-start: 76px;
   }
 
   .map-panel {

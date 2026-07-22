@@ -2095,6 +2095,9 @@ export default function Home() {
   const mapLastHeadingRef = useRef<number | null>(null);
   const mapHasLocationFixRef = useRef(false);
   const mapPanelRef = useRef<HTMLElement>(null);
+  const resultSectionRef = useRef<HTMLElement>(null);
+  const pendingResultFocusRef = useRef(false);
+  const [resultFocusRequestId, setResultFocusRequestId] = useState(0);
   const [stations, setStations] = useState(STATIONS);
   const [liveBikeStatus, setLiveBikeStatus] = useState<
     "loading" | "ready" | "unavailable"
@@ -2261,11 +2264,11 @@ export default function Home() {
 
       if (!resolvedOrigin || !resolvedDestination) {
         setErrorMessage("출발지와 도착지를 검색 결과에서 선택해 주세요.");
-        return;
+        return false;
       }
       if (resolvedOrigin.id === resolvedDestination.id) {
         setErrorMessage("서로 다른 출발지와 도착지를 선택해 주세요.");
-        return;
+        return false;
       }
 
       setOrigin(resolvedOrigin);
@@ -2282,8 +2285,36 @@ export default function Home() {
       setAlternativesOpen(false);
       setErrorMessage("");
       originLocationRequestGateRef.current.invalidate();
+      return true;
     }, [destination, origin, rememberRoute],
   );
+
+  const findRoute = useCallback(() => {
+    if (!commitRoute()) return;
+    pendingResultFocusRef.current = true;
+    setResultFocusRequestId((requestId) => requestId + 1);
+  }, [commitRoute]);
+
+  useEffect(() => {
+    if (!plan || !pendingResultFocusRef.current) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const resultSection = resultSectionRef.current;
+      if (!resultSection || !pendingResultFocusRef.current) return;
+      pendingResultFocusRef.current = false;
+      const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      resultSection.focus({ preventScroll: true });
+      resultSection.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start",
+        inline: "nearest",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [plan, resultFocusRequestId]);
 
   const selectOrigin = (place: Place) => {
     originLocationRequestGateRef.current.invalidate();
@@ -2607,6 +2638,7 @@ export default function Home() {
 
   const resetRoute = () => {
     originLocationRequestGateRef.current.invalidate();
+    pendingResultFocusRef.current = false;
     stopMapLocationTracking(true);
     setOriginQuery("");
     setDestinationQuery("");
@@ -2731,7 +2763,7 @@ export default function Home() {
                 </p>
               ) : null}
 
-              <button className="find-route-button" type="button" onClick={() => commitRoute()}>
+              <button className="find-route-button" type="button" onClick={findRoute}>
                 <Navigation size={17} fill="currentColor" aria-hidden="true" />
                 최적 경로 찾기
                 <ArrowRight className="button-arrow" size={18} aria-hidden="true" />
@@ -2770,7 +2802,12 @@ export default function Home() {
             </section>
 
             {plan ? (
-              <section className="result-section" aria-labelledby="route-result-title">
+              <section
+                ref={resultSectionRef}
+                className="result-section"
+                aria-labelledby="route-result-title"
+                tabIndex={-1}
+              >
               <div className="result-heading">
                 <div>
                   <span className="result-kicker">예상 추천 경로</span>
