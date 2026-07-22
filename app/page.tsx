@@ -1317,12 +1317,12 @@ function LeafletRouteMap({
         L.marker(coordinates, {
           icon: L.divIcon({
             className: `route-marker-wrapper ${className}-wrapper`,
-            html: `<span class="route-marker ${className}">${label}</span>`,
-            iconSize: [42, 42],
-            iconAnchor: [0, 42],
+            html: `<span class="route-marker ${className}"><span class="route-marker-shape"><span class="route-marker-label">${label}</span></span></span>`,
+            iconSize: [60, 60],
+            iconAnchor: [30, 60],
           }),
         })
-          .bindTooltip(tooltip, { direction: "top", offset: [21, -38] })
+          .bindTooltip(tooltip, { direction: "top", offset: [0, -54] })
           .addTo(group);
       };
 
@@ -1791,13 +1791,19 @@ function KakaoRouteMap({
       wrapper.setAttribute("aria-hidden", "true");
       const marker = document.createElement("span");
       marker.className = `route-marker ${className}`;
-      marker.textContent = label;
+      const markerShape = document.createElement("span");
+      markerShape.className = "route-marker-shape";
+      const markerLabel = document.createElement("span");
+      markerLabel.className = "route-marker-label";
+      markerLabel.textContent = label;
+      markerShape.appendChild(markerLabel);
+      marker.appendChild(markerShape);
       wrapper.appendChild(marker);
       const overlay = new sdk.maps.CustomOverlay({
         map,
         position: toLatLng(coordinates),
         content: wrapper,
-        xAnchor: 0,
+        xAnchor: 0.5,
         yAnchor: 1,
         zIndex: 4,
       });

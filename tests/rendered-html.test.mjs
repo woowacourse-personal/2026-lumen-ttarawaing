@@ -462,27 +462,34 @@ test("uses full start and destination labels on both map providers", async () =>
     (pageSource.match(/"도착",\s*"destination-marker"/g) ?? []).length,
     2,
   );
-  assert.match(styles, /\.route-marker\.origin-marker\s*\{[^}]*width:\s*42px/s);
-  assert.match(styles, /\.route-marker\.destination-marker\s*\{[^}]*width:\s*42px/s);
+  assert.match(pageSource, /class="route-marker-label">\$\{label\}/);
+  assert.match(styles, /\.route-marker-label\s*\{/);
 });
 
-test("anchors every route marker by its lower-left pointer tip", async () => {
+test("renders every route marker as a centered teardrop pin", async () => {
   const [pageSource, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
-  assert.match(pageSource, /iconSize:\s*\[42, 42\]/);
-  assert.match(pageSource, /iconAnchor:\s*\[0, 42\]/);
-  assert.match(pageSource, /xAnchor:\s*0,\s*\n\s*yAnchor:\s*1/);
+  assert.match(pageSource, /iconSize:\s*\[60, 60\]/);
+  assert.match(pageSource, /iconAnchor:\s*\[30, 60\]/);
+  assert.match(pageSource, /xAnchor:\s*0\.5,\s*\n\s*yAnchor:\s*1/);
   assert.match(
     styles,
-    /\.route-marker-wrapper\s*\{[^}]*width:\s*42px[^}]*height:\s*42px/s,
+    /\.route-marker-wrapper\s*\{[^}]*width:\s*60px[^}]*height:\s*60px/s,
   );
   assert.match(
     styles,
-    /\.route-marker-wrapper::after\s*\{[^}]*top:\s*32px[^}]*left:\s*0[^}]*height:\s*10px[^}]*clip-path:\s*polygon\(0 0, 100% 0, 0 100%\)/s,
+    /\.route-marker-shape\s*\{[^}]*width:\s*42px[^}]*height:\s*42px[^}]*border-radius:\s*50% 50% 50% 0[^}]*transform:\s*translateX\(-50%\) rotate\(-45deg\)/s,
   );
+  assert.match(styles, /\.route-marker-label\s*\{[^}]*transform:\s*rotate\(45deg\)/s);
+  assert.match(styles, /\.route-marker\s*\{[^}]*transform-origin:\s*50% 100%/s);
+  assert.doesNotMatch(styles, /\.route-marker-wrapper::after/);
+  assert.match(styles, /\.origin-marker-wrapper\s*\{[^}]*var\(--blue\)/s);
+  assert.match(styles, /\.bike-marker-wrapper\s*\{[^}]*var\(--green\)/s);
+  assert.match(styles, /\.return-marker-wrapper\s*\{[^}]*#047a5d/s);
+  assert.match(styles, /\.destination-marker-wrapper\s*\{[^}]*var\(--coral\)/s);
   assert.match(pageSource, /\$\{className\}-wrapper/);
 });
 
