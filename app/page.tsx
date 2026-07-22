@@ -3104,36 +3104,40 @@ export default function Home() {
               </div>
 
               <div className="mode-summary">
-                <div className="mode-bar" aria-hidden="true">
-                  <span
-                    className="mode-walk-one"
+                <div className="mode-segments">
+                  <div
+                    className="mode-segment"
                     style={{ flex: plan.walkToMinutes }}
-                  />
-                  <span className="mode-bike" style={{ flex: plan.bikeMinutes }} />
-                  <span
-                    className="mode-walk-two"
+                  >
+                    <span className="mode-segment-bar mode-walk-one" aria-hidden="true" />
+                    <span
+                      className="mode-segment-label walk-to-label"
+                      aria-label={`출발 대여소까지 도보 ${plan.walkToMinutes}분`}
+                    >
+                      <Footprints size={14} aria-hidden="true" /> {plan.walkToMinutes}분
+                    </span>
+                  </div>
+                  <div className="mode-segment" style={{ flex: plan.bikeMinutes }}>
+                    <span className="mode-segment-bar mode-bike" aria-hidden="true" />
+                    <span
+                      className="mode-segment-label bike-label"
+                      aria-label={`따릉이 ${plan.bikeMinutes}분`}
+                    >
+                      <Bike size={15} aria-hidden="true" /> {plan.bikeMinutes}분
+                    </span>
+                  </div>
+                  <div
+                    className="mode-segment"
                     style={{ flex: plan.walkFromMinutes }}
-                  />
-                </div>
-                <div className="mode-labels">
-                  <span
-                    className="walk-to-label"
-                    aria-label={`출발 대여소까지 도보 ${plan.walkToMinutes}분`}
                   >
-                    <Footprints size={14} aria-hidden="true" /> {plan.walkToMinutes}분
-                  </span>
-                  <span
-                    className="bike-label"
-                    aria-label={`따릉이 ${plan.bikeMinutes}분`}
-                  >
-                    <Bike size={15} aria-hidden="true" /> {plan.bikeMinutes}분
-                  </span>
-                  <span
-                    className="walk-from-label"
-                    aria-label={`도착지까지 도보 ${plan.walkFromMinutes}분`}
-                  >
-                    <Footprints size={14} aria-hidden="true" /> {plan.walkFromMinutes}분
-                  </span>
+                    <span className="mode-segment-bar mode-walk-two" aria-hidden="true" />
+                    <span
+                      className="mode-segment-label walk-from-label"
+                      aria-label={`도착지까지 도보 ${plan.walkFromMinutes}분`}
+                    >
+                      <Footprints size={14} aria-hidden="true" /> {plan.walkFromMinutes}분
+                    </span>
+                  </div>
                 </div>
               </div>
 

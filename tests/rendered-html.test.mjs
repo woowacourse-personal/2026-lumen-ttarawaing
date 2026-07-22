@@ -791,20 +791,41 @@ test("keeps the mobile heading-up camera centered through map relayout", async (
   assert.match(mapCanvasRule, /transform-origin:\s*50% 50%/);
 });
 
-test("summarizes route time as icon and duration in travel order", async () => {
-  const [pageSource, recommendationSource] = await Promise.all([
+test("centers each route time label under its proportional segment", async () => {
+  const [pageSource, recommendationSource, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(
       new URL("../app/pass-route-recommendation.ts", import.meta.url),
       "utf8",
     ),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
   assert.match(pageSource, /<Footprints[^>]*\/> \{plan\.walkToMinutes\}분/);
   assert.match(pageSource, /<Bike[^>]*\/> \{plan\.bikeMinutes\}분/);
   assert.match(pageSource, /<Footprints[^>]*\/> \{plan\.walkFromMinutes\}분/);
+  assert.match(
+    pageSource,
+    /className="mode-segment"[\s\S]*?style=\{\{ flex: plan\.walkToMinutes \}\}[\s\S]*?mode-segment-bar mode-walk-one[\s\S]*?mode-segment-label walk-to-label/,
+  );
+  assert.match(
+    pageSource,
+    /className="mode-segment" style=\{\{ flex: plan\.bikeMinutes \}\}[\s\S]*?mode-segment-bar mode-bike[\s\S]*?mode-segment-label bike-label/,
+  );
+  assert.match(
+    pageSource,
+    /className="mode-segment"[\s\S]*?style=\{\{ flex: plan\.walkFromMinutes \}\}[\s\S]*?mode-segment-bar mode-walk-two[\s\S]*?mode-segment-label walk-from-label/,
+  );
   assert.match(pageSource, /aria-label=\{`출발 대여소까지 도보 \$\{plan\.walkToMinutes\}분`\}/);
   assert.match(pageSource, /aria-label=\{`도착지까지 도보 \$\{plan\.walkFromMinutes\}분`\}/);
+  assert.match(
+    styles,
+    /\.mode-segment\s*\{[^}]*display:\s*flex[^}]*min-width:\s*40px[^}]*align-items:\s*center[^}]*flex-direction:\s*column/s,
+  );
+  assert.match(
+    styles,
+    /\.mode-segment-label\s*\{[^}]*justify-content:\s*center[^}]*white-space:\s*nowrap/s,
+  );
   assert.match(
     pageSource,
     /const totalMinutes = walkToMinutes \+ bikeMinutes \+ walkFromMinutes;/,
