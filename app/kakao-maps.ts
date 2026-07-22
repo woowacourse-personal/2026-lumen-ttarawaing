@@ -80,6 +80,18 @@ export type KakaoSdk = {
       yAnchor?: number;
       zIndex?: number;
     }) => KakaoCustomOverlay;
+    event: {
+      addListener(
+        target: KakaoMap,
+        type: string,
+        handler: () => void,
+      ): void;
+      removeListener(
+        target: KakaoMap,
+        type: string,
+        handler: () => void,
+      ): void;
+    };
     services: {
       Places: new () => KakaoPlaces;
       Status: {

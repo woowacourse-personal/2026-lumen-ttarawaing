@@ -1171,6 +1171,7 @@ function LeafletRouteMap({
   locationMode,
   headingStatus,
   onLocate,
+  onMapDragStart,
 }: {
   plan: RoutePlan;
   geometry: RouteGeometry;
@@ -1185,6 +1186,7 @@ function LeafletRouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
+  onMapDragStart: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -1222,6 +1224,15 @@ function LeafletRouteMap({
   useEffect(() => {
     focusRequestRef.current = focusRequest;
   }, [focusRequest]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    map.on("dragstart", onMapDragStart);
+    return () => {
+      map.off("dragstart", onMapDragStart);
+    };
+  }, [onMapDragStart, ready]);
 
   useEffect(() => {
     let active = true;
@@ -1570,6 +1581,7 @@ function KakaoRouteMap({
   locationMode,
   headingStatus,
   onLocate,
+  onMapDragStart,
   onError,
 }: {
   plan: RoutePlan;
@@ -1585,6 +1597,7 @@ function KakaoRouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
+  onMapDragStart: () => void;
   onError: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -1623,6 +1636,16 @@ function KakaoRouteMap({
   useEffect(() => {
     focusRequestRef.current = focusRequest;
   }, [focusRequest]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const sdk = sdkRef.current;
+    if (!ready || !map || !sdk) return;
+    sdk.maps.event.addListener(map, "dragstart", onMapDragStart);
+    return () => {
+      sdk.maps.event.removeListener(map, "dragstart", onMapDragStart);
+    };
+  }, [onMapDragStart, ready]);
 
   const clearMapObjects = useCallback(() => {
     mapObjectsRef.current.forEach((mapObject) => mapObject.setMap(null));
@@ -1970,6 +1993,7 @@ function RouteMap({
   locationMode,
   headingStatus,
   onLocate,
+  onMapDragStart,
 }: {
   plan: RoutePlan;
   geometry: RouteGeometry;
@@ -1984,6 +2008,7 @@ function RouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
+  onMapDragStart: () => void;
 }) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
   const useLeafletFallback = useCallback(() => setProvider("leaflet"), []);
@@ -2018,6 +2043,7 @@ function RouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
+        onMapDragStart={onMapDragStart}
         onError={useLeafletFallback}
       />
     );
@@ -2038,6 +2064,7 @@ function RouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
+        onMapDragStart={onMapDragStart}
       />
     );
   }
@@ -2405,6 +2432,12 @@ export default function Home() {
     },
     [],
   );
+
+  const minimizeMobileDetailsFromMapDrag = useCallback(() => {
+    if (!window.matchMedia("(max-width: 900px)").matches) return;
+    pendingResultFocusRef.current = false;
+    setMobileDetailsMinimized(true);
+  }, []);
 
   const selectOrigin = (place: Place) => {
     originLocationRequestGateRef.current.invalidate();
@@ -3402,6 +3435,7 @@ export default function Home() {
               locationMode={mapLocationMode}
               headingStatus={mapHeadingStatus}
               onLocate={locateMapUser}
+              onMapDragStart={minimizeMobileDetailsFromMapDrag}
             />
           ) : (
             <div className="map-empty-state">

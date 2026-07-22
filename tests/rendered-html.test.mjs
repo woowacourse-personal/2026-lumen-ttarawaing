@@ -609,6 +609,44 @@ test("provides a draggable mobile route-details sheet that enlarges the map", as
   assert.match(styles, /height:\s*calc\(100dvh - 60px - 44px\)/);
 });
 
+test("minimizes mobile details on map drag without animating the handle", async () => {
+  const [pageSource, kakaoSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/kakao-maps.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pageSource, /map\.on\("dragstart", onMapDragStart\)/);
+  assert.match(pageSource, /map\.off\("dragstart", onMapDragStart\)/);
+  assert.match(
+    pageSource,
+    /sdk\.maps\.event\.addListener\(map, "dragstart", onMapDragStart\)/,
+  );
+  assert.match(
+    pageSource,
+    /sdk\.maps\.event\.removeListener\(map, "dragstart", onMapDragStart\)/,
+  );
+  assert.match(pageSource, /onMapDragStart=\{minimizeMobileDetailsFromMapDrag\}/);
+  assert.match(
+    pageSource,
+    /minimizeMobileDetailsFromMapDrag[\s\S]*?max-width: 900px[\s\S]*?pendingResultFocusRef\.current = false[\s\S]*?setMobileDetailsMinimized\(true\)/,
+  );
+  assert.match(kakaoSource, /event:\s*\{[\s\S]*?addListener[\s\S]*?removeListener/);
+  assert.doesNotMatch(styles, /\.mobile-details-toggle:hover \.mobile-details-grip/);
+  assert.doesNotMatch(
+    styles,
+    /\.mobile-details-toggle:focus-visible \.mobile-details-grip/,
+  );
+  assert.doesNotMatch(styles, /\.mobile-details-toggle:active \.mobile-details-grip/);
+  const gripRule = styles.match(/\.mobile-details-grip\s*\{([^}]+)\}/)?.[1] ?? "";
+  assert.match(gripRule, /width:\s*42px/);
+  assert.match(gripRule, /background:\s*#b9c3bd/);
+  assert.doesNotMatch(gripRule, /transition:|transform:|var\(--green\)/);
+  assert.match(pageSource, /new ResizeObserver\(applyLayout\)/);
+  assert.match(pageSource, /mapRef\.current\?\.invalidateSize\(\{ pan: false \}\)/);
+  assert.match(pageSource, /mapRef\.current\?\.relayout\(\)/);
+});
+
 test("summarizes route time as icon and duration in travel order", async () => {
   const [pageSource, recommendationSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

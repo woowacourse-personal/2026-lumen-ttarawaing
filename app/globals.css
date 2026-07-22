@@ -2052,18 +2052,6 @@ input:focus-visible {
     height: 5px;
     border-radius: 999px;
     background: #b9c3bd;
-    transition: width 180ms ease, background 180ms ease, transform 180ms ease;
-  }
-
-  .mobile-details-toggle:hover .mobile-details-grip,
-  .mobile-details-toggle:focus-visible .mobile-details-grip {
-    width: 50px;
-    background: #87978f;
-  }
-
-  .mobile-details-toggle:active .mobile-details-grip {
-    background: var(--green);
-    transform: scaleX(1.08);
   }
 
   .workspace.has-route .map-panel {
