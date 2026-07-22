@@ -39,6 +39,31 @@ test("server-renders the ttarawaing route planner", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>따라와잉/);
+  assert.match(
+    html,
+    /<meta name="description" content="따릉이를 더 편하게\. 가까운 대여소부터 반납 대여소와 이동 경로까지 한 번에 알려드려요\."/,
+  );
+  assert.match(
+    html,
+    /<meta property="og:description" content="따릉이를 더 편하게\. 가까운 대여소부터 반납 대여소와 이동 경로까지 한 번에 알려드려요\."/,
+  );
+  assert.match(
+    html,
+    /<meta property="og:image" content="https?:\/\/localhost(?::\d+)?\/og-v2\.png"/,
+  );
+  assert.match(
+    html,
+    /<meta property="og:image:alt" content="따라와잉 — 따릉이를 더 편하게"/,
+  );
+  assert.match(
+    html,
+    /<meta name="twitter:description" content="따릉이를 더 편하게\. 가까운 대여소부터 반납 대여소와 이동 경로까지 한 번에 알려드려요\."/,
+  );
+  assert.match(
+    html,
+    /<meta name="twitter:image" content="https?:\/\/localhost(?::\d+)?\/og-v2\.png"/,
+  );
+  assert.doesNotMatch(html, /걷기와 따릉이를 가장 편한 한 경로로/);
   assert.match(html, /대여부터 반납까지 한 번에 알려드려요/);
   assert.doesNotMatch(html, /대여부터 반납까지 한 번에<\/div>/);
   assert.match(html, /오늘은 어디로 가볼까요/);

@@ -8,6 +8,12 @@ const geist = Geist({
   subsets: ["latin"],
 });
 
+const siteTitle = "따라와잉 — 따릉이로 잇는 서울";
+const siteDescription =
+  "따릉이를 더 편하게. 가까운 대여소부터 반납 대여소와 이동 경로까지 한 번에 알려드려요.";
+const socialImagePath = "/og-v2.png";
+const socialImageAlt = "따라와잉 — 따릉이를 더 편하게";
+
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
@@ -15,34 +21,33 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = host ? `${protocol}://${host}` : "http://localhost:3000";
 
   return {
-    title: "따라와잉 — 따릉이로 잇는 서울",
-    description:
-      "출발지부터 가장 가까운 따릉이 대여소, 목적지와 가까운 반납 대여소까지 한 번에 안내하는 서울 자전거 경로 서비스",
+    title: siteTitle,
+    description: siteDescription,
     metadataBase: new URL(origin),
     icons: {
       icon: "/favicon.png",
       shortcut: "/favicon.png",
     },
     openGraph: {
-      title: "따라와잉 — 따릉이로 잇는 서울",
-      description: "걷기와 따릉이를 가장 편한 한 경로로 이어보세요.",
+      title: siteTitle,
+      description: siteDescription,
       type: "website",
       locale: "ko_KR",
       url: origin,
       images: [
         {
-          url: `${origin}/og.png`,
+          url: `${origin}${socialImagePath}`,
           width: 1200,
           height: 630,
-          alt: "따라와잉 — 걷기와 따릉이를 가장 편한 한 경로로",
+          alt: socialImageAlt,
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "따라와잉 — 따릉이로 잇는 서울",
-      description: "걷기와 따릉이를 가장 편한 한 경로로 이어보세요.",
-      images: [`${origin}/og.png`],
+      title: siteTitle,
+      description: siteDescription,
+      images: [`${origin}${socialImagePath}`],
     },
   };
 }
