@@ -43,6 +43,12 @@ import {
   loadRouteGeometry,
 } from "./route-geometry";
 import {
+  buildPlannedRouteLegs,
+  createRouteProgressState,
+  getActivePlannedRouteLeg,
+  updateRouteProgress,
+} from "./route-progress";
+import {
   DEFAULT_PASS_TYPE,
   PASS_OPTIONS,
   PASS_TYPE_STORAGE_KEY,
@@ -86,6 +92,7 @@ import type {
   RouteGeometry,
   RouteGeometryInput,
 } from "./route-geometry";
+import type { PlannedRouteLeg, RouteLocationFix } from "./route-progress";
 import type { PassType } from "./pass-planning";
 import type { PassRouteStatus } from "./pass-route-recommendation";
 
@@ -252,6 +259,7 @@ const STATIONS: Station[] = stationCatalog.stations.map((station) => ({
 }));
 const EMPTY_STATIONS: Station[] = [];
 const EMPTY_BIKE_LEGS: BikeRouteLeg[] = [];
+const EMPTY_PLANNED_ROUTE_LEGS: PlannedRouteLeg[] = [];
 
 const ROUTE_HISTORY_STORAGE_KEY = "ttarawaing-route-history-v1";
 const ROUTE_HISTORY_LIMIT = 3;
@@ -1041,24 +1049,24 @@ function PlaceField({
 }
 
 function RouteMapChrome({
-  plan,
+  nextRouteLeg,
   ready,
   geometryStatus,
   locationStatus,
   locationMode,
   headingStatus,
   onLocate,
-  onFocusEndStation,
+  onFocusNextTarget,
   showOpenStreetMapAttribution = false,
 }: {
-  plan: RoutePlan;
+  nextRouteLeg: PlannedRouteLeg;
   ready: boolean;
   geometryStatus: RouteGeometryStatus;
   locationStatus: MapLocationStatus;
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
-  onFocusEndStation: () => void;
+  onFocusNextTarget: () => void;
   showOpenStreetMapAttribution?: boolean;
 }) {
   const hasOpenStreetMapRoute =
@@ -1079,6 +1087,16 @@ function RouteMapChrome({
       : headingStatus === "fallback"
         ? "방향 센서가 없어 이동 중일 때만 방향을 표시해요"
         : "";
+  const nextTargetLabel =
+    nextRouteLeg.targetKind === "start-station"
+      ? "다음 지점 · 출발 대여소"
+      : nextRouteLeg.targetKind === "transfer-station"
+        ? "다음 지점 · 경유 대여소"
+        : nextRouteLeg.targetKind === "end-station"
+          ? "다음 지점 · 반납 대여소"
+          : "다음 지점 · 도착지";
+  const NextTargetIcon =
+    nextRouteLeg.targetKind === "destination" ? MapPin : Bike;
 
   return (
     <>
@@ -1145,19 +1163,21 @@ function RouteMapChrome({
       <button
         className="map-station-card"
         type="button"
-        aria-label={`${plan.endStation.name} 반납 대여소를 지도에서 보기`}
-        onClick={onFocusEndStation}
+        aria-label={`지도에서 다음 지점 보기: ${nextRouteLeg.target.name}`}
+        onClick={onFocusNextTarget}
       >
         <div className="station-mini-icon">
-          <Bike size={18} aria-hidden="true" />
+          <NextTargetIcon size={18} aria-hidden="true" />
         </div>
         <div>
-          <span>목적지와 가까운 반납 대여소</span>
-          <strong>{plan.endStation.name}</strong>
+          <span>{nextTargetLabel}</span>
+          <strong>{nextRouteLeg.target.name}</strong>
         </div>
         <div className="station-distance">
-          <b>{formatDistance(plan.walkFromMeters)}</b>
-          <small>목적지까지</small>
+          <b>
+            {formatDistance(Math.round(nextRouteLeg.plannedDistanceMeters))}
+          </b>
+          <small>예상 구간 거리</small>
         </div>
       </button>
     </>
@@ -1166,6 +1186,7 @@ function RouteMapChrome({
 
 function LeafletRouteMap({
   plan,
+  nextRouteLeg,
   geometry,
   geometryStatus,
   transferStops,
@@ -1178,10 +1199,11 @@ function LeafletRouteMap({
   locationMode,
   headingStatus,
   onLocate,
-  onFocusEndStation,
+  onFocusNextTarget,
   onMapDragStart,
 }: {
   plan: RoutePlan;
+  nextRouteLeg: PlannedRouteLeg;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
   transferStops: Station[];
@@ -1194,7 +1216,7 @@ function LeafletRouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
-  onFocusEndStation: () => void;
+  onFocusNextTarget: () => void;
   onMapDragStart: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -1563,14 +1585,14 @@ function LeafletRouteMap({
     <div className="map-wrap">
       <div ref={nodeRef} className="map-canvas" aria-label="따라와잉 경로 지도" />
       <RouteMapChrome
-        plan={plan}
+        nextRouteLeg={nextRouteLeg}
         ready={ready}
         geometryStatus={geometryStatus}
         locationStatus={locationStatus}
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
-        onFocusEndStation={onFocusEndStation}
+        onFocusNextTarget={onFocusNextTarget}
         showOpenStreetMapAttribution={locationMode === "heading"}
       />
     </div>
@@ -1579,6 +1601,7 @@ function LeafletRouteMap({
 
 function KakaoRouteMap({
   plan,
+  nextRouteLeg,
   geometry,
   geometryStatus,
   transferStops,
@@ -1591,11 +1614,12 @@ function KakaoRouteMap({
   locationMode,
   headingStatus,
   onLocate,
-  onFocusEndStation,
+  onFocusNextTarget,
   onMapDragStart,
   onError,
 }: {
   plan: RoutePlan;
+  nextRouteLeg: PlannedRouteLeg;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
   transferStops: Station[];
@@ -1608,7 +1632,7 @@ function KakaoRouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
-  onFocusEndStation: () => void;
+  onFocusNextTarget: () => void;
   onMapDragStart: () => void;
   onError: () => void;
 }) {
@@ -1978,14 +2002,14 @@ function KakaoRouteMap({
         aria-label="카카오맵으로 보는 따라와잉 경로"
       />
       <RouteMapChrome
-        plan={plan}
+        nextRouteLeg={nextRouteLeg}
         ready={ready}
         geometryStatus={geometryStatus}
         locationStatus={locationStatus}
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
-        onFocusEndStation={onFocusEndStation}
+        onFocusNextTarget={onFocusNextTarget}
         showOpenStreetMapAttribution
       />
     </div>
@@ -1994,6 +2018,7 @@ function KakaoRouteMap({
 
 function RouteMap({
   plan,
+  nextRouteLeg,
   geometry,
   geometryStatus,
   transferStops,
@@ -2006,10 +2031,11 @@ function RouteMap({
   locationMode,
   headingStatus,
   onLocate,
-  onFocusEndStation,
+  onFocusNextTarget,
   onMapDragStart,
 }: {
   plan: RoutePlan;
+  nextRouteLeg: PlannedRouteLeg;
   geometry: RouteGeometry;
   geometryStatus: RouteGeometryStatus;
   transferStops: Station[];
@@ -2022,7 +2048,7 @@ function RouteMap({
   locationMode: MapLocationMode;
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
-  onFocusEndStation: () => void;
+  onFocusNextTarget: () => void;
   onMapDragStart: () => void;
 }) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
@@ -2046,6 +2072,7 @@ function RouteMap({
     return (
       <KakaoRouteMap
         plan={plan}
+        nextRouteLeg={nextRouteLeg}
         geometry={geometry}
         geometryStatus={geometryStatus}
         transferStops={transferStops}
@@ -2058,7 +2085,7 @@ function RouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
-        onFocusEndStation={onFocusEndStation}
+        onFocusNextTarget={onFocusNextTarget}
         onMapDragStart={onMapDragStart}
         onError={useLeafletFallback}
       />
@@ -2068,6 +2095,7 @@ function RouteMap({
     return (
       <LeafletRouteMap
         plan={plan}
+        nextRouteLeg={nextRouteLeg}
         geometry={geometry}
         geometryStatus={geometryStatus}
         transferStops={transferStops}
@@ -2080,7 +2108,7 @@ function RouteMap({
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
-        onFocusEndStation={onFocusEndStation}
+        onFocusNextTarget={onFocusNextTarget}
         onMapDragStart={onMapDragStart}
       />
     );
@@ -2090,14 +2118,14 @@ function RouteMap({
     <div className="map-wrap">
       <div className="map-canvas" aria-hidden="true" />
       <RouteMapChrome
-        plan={plan}
+        nextRouteLeg={nextRouteLeg}
         ready={false}
         geometryStatus={geometryStatus}
         locationStatus={locationStatus}
         locationMode={locationMode}
         headingStatus={headingStatus}
         onLocate={onLocate}
-        onFocusEndStation={onFocusEndStation}
+        onFocusNextTarget={onFocusNextTarget}
       />
     </div>
   );
@@ -2126,6 +2154,19 @@ export default function Home() {
     null,
   );
   const [mapUserLocation, setMapUserLocation] = useState<Coordinates | null>(null);
+  const [routeProgressState, setRouteProgressState] = useState(() =>
+    createRouteProgressState("no-route"),
+  );
+  const [routeProgressSessionId, setRouteProgressSessionId] = useState(0);
+  const routeProgressConfigRef = useRef<{
+    routeKey: string;
+    legs: readonly PlannedRouteLeg[];
+    enabled: boolean;
+  }>({
+    routeKey: "no-route",
+    legs: EMPTY_PLANNED_ROUTE_LEGS,
+    enabled: false,
+  });
   const [mapLocationStatus, setMapLocationStatus] =
     useState<MapLocationStatus>("idle");
   const [mapLocationMode, setMapLocationMode] =
@@ -2249,6 +2290,46 @@ export default function Home() {
   const transferStops = routeRecommendation?.transferStops ?? EMPTY_STATIONS;
   const bikeLegs = routeRecommendation?.bikeLegs ?? EMPTY_BIKE_LEGS;
   const passRouteStatus = routeRecommendation?.passStatus ?? "loading";
+  const plannedRouteLegs = useMemo(
+    () =>
+      routeRecommendation
+        ? buildPlannedRouteLegs({
+            geometry: routeRecommendation.geometry,
+            startStation: routeRecommendation.plan.startStation,
+            transferStations: routeRecommendation.transferStops,
+            endStation: routeRecommendation.plan.endStation,
+            destination: routeRecommendation.plan.destination,
+          })
+        : EMPTY_PLANNED_ROUTE_LEGS,
+    [routeRecommendation],
+  );
+  const routeProgressKey = useMemo(
+    () =>
+      plan
+        ? [
+            routeProgressSessionId,
+            passType,
+            plan.origin.id,
+            plan.origin.coordinates.join(","),
+            ...plannedRouteLegs.map(
+              (leg) => `${leg.targetKind}:${leg.target.id}`,
+            ),
+          ].join("|")
+        : "no-route",
+    [passType, plan, plannedRouteLegs, routeProgressSessionId],
+  );
+  useEffect(() => {
+    routeProgressConfigRef.current = {
+      routeKey: routeProgressKey,
+      legs: plannedRouteLegs,
+      enabled: Boolean(plan) && passRouteStatus !== "loading",
+    };
+  }, [passRouteStatus, plan, plannedRouteLegs, routeProgressKey]);
+  const nextRouteLeg = getActivePlannedRouteLeg(
+    plannedRouteLegs,
+    routeProgressState,
+    routeProgressKey,
+  );
   const kakaoRoutePoints = useMemo(
     () => (plan ? getKakaoRoutePoints(plan, transferStops) : []),
     [plan, transferStops],
@@ -2283,10 +2364,15 @@ export default function Home() {
     showNotice("가장 편한 따릉이 경로를 찾았어요.", 2_800);
   }, [committedRoute, routeRecommendation, showNotice]);
 
-  const choosePassType = useCallback((nextPassType: PassType) => {
-    setPassType(nextPassType);
-    writeStoredValue(window.localStorage, PASS_TYPE_STORAGE_KEY, nextPassType);
-  }, []);
+  const choosePassType = useCallback(
+    (nextPassType: PassType) => {
+      if (nextPassType === passType) return;
+      setRouteProgressSessionId((sessionId) => sessionId + 1);
+      setPassType(nextPassType);
+      writeStoredValue(window.localStorage, PASS_TYPE_STORAGE_KEY, nextPassType);
+    },
+    [passType],
+  );
 
   const rememberRoute = useCallback((route: RouteHistoryItem) => {
     if (
@@ -2336,6 +2422,7 @@ export default function Home() {
         origin: resolvedOrigin,
         destination: resolvedDestination,
       });
+      setRouteProgressSessionId((sessionId) => sessionId + 1);
       setMapFocusRequest(null);
       rememberRoute({ origin: resolvedOrigin, destination: resolvedDestination });
       setSelectedEndStationId(undefined);
@@ -2597,6 +2684,24 @@ export default function Home() {
             position.coords.latitude,
             position.coords.longitude,
           ]);
+          const routeFix: RouteLocationFix = {
+            coordinates: [
+              position.coords.latitude,
+              position.coords.longitude,
+            ],
+            accuracyMeters: position.coords.accuracy,
+            timestamp: position.timestamp,
+          };
+          const progressConfig = routeProgressConfigRef.current;
+          setRouteProgressState((currentState) =>
+            updateRouteProgress({
+              state: currentState,
+              routeKey: progressConfig.routeKey,
+              legs: progressConfig.legs,
+              fix: routeFix,
+              enabled: progressConfig.enabled,
+            }),
+          );
           setMapTravelHeading(travelHeading);
           setMapLocationStatus("ready");
           mapHasLocationFixRef.current = true;
@@ -2752,12 +2857,9 @@ export default function Home() {
     startMapLocationTracking,
   ]);
 
-  const focusMapPoint = useCallback(
-    (target: MapFocusTarget | { coordinates: Coordinates }) => {
-      const coordinates =
-        typeof target === "string" ? plan?.[target].coordinates : target.coordinates;
-      if (!coordinates) return;
-      stopMapLocationTracking(true);
+  const focusMapCoordinates = useCallback(
+    (coordinates: Coordinates, preserveLocationTracking = false) => {
+      if (!preserveLocationTracking) stopMapLocationTracking(true);
       setMapFocusRequest((currentRequest) => ({
         coordinates: [coordinates[0], coordinates[1]],
         requestId: (currentRequest?.requestId ?? 0) + 1,
@@ -2774,8 +2876,23 @@ export default function Home() {
         });
       }
     },
-    [plan, stopMapLocationTracking],
+    [stopMapLocationTracking],
   );
+
+  const focusMapPoint = useCallback(
+    (target: MapFocusTarget | { coordinates: Coordinates }) => {
+      const coordinates =
+        typeof target === "string" ? plan?.[target].coordinates : target.coordinates;
+      if (!coordinates) return;
+      focusMapCoordinates(coordinates);
+    },
+    [focusMapCoordinates, plan],
+  );
+
+  const focusNextRouteTarget = useCallback(() => {
+    if (!nextRouteLeg) return;
+    focusMapCoordinates(nextRouteLeg.target.coordinates, true);
+  }, [focusMapCoordinates, nextRouteLeg]);
 
   const resetRoute = () => {
     originLocationRequestGateRef.current.invalidate();
@@ -2787,6 +2904,7 @@ export default function Home() {
     setOrigin(null);
     setDestination(null);
     setCommittedRoute(null);
+    setRouteProgressSessionId((sessionId) => sessionId + 1);
     setMapFocusRequest(null);
     setSelectedEndStationId(undefined);
     setAlternativesOpen(false);
@@ -3296,6 +3414,10 @@ export default function Home() {
                               aria-pressed={station.id === plan.endStation.id}
                               key={station.id}
                               onClick={() => {
+                                if (station.id === plan.endStation.id) return;
+                                setRouteProgressSessionId(
+                                  (sessionId) => sessionId + 1,
+                                );
                                 setMapFocusRequest(null);
                                 setSelectedEndStationId(station.id);
                               }}
@@ -3436,9 +3558,10 @@ export default function Home() {
           className={`map-panel${plan ? "" : " is-empty"}`}
           aria-label={plan ? "경로 지도" : "경로 검색 안내"}
         >
-          {plan && routeRecommendation ? (
+          {plan && routeRecommendation && nextRouteLeg ? (
             <RouteMap
               plan={plan}
+              nextRouteLeg={nextRouteLeg}
               geometry={routeRecommendation.geometry}
               geometryStatus={routeRecommendation.geometryStatus}
               transferStops={transferStops}
@@ -3453,7 +3576,7 @@ export default function Home() {
               locationMode={mapLocationMode}
               headingStatus={mapHeadingStatus}
               onLocate={locateMapUser}
-              onFocusEndStation={() => focusMapPoint("endStation")}
+              onFocusNextTarget={focusNextRouteTarget}
               onMapDragStart={minimizeMobileDetailsFromMapDrag}
             />
           ) : (

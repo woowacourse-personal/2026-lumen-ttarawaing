@@ -522,16 +522,43 @@ test("focuses the map when each route timeline place is selected", async () => {
   assert.match(pageSource, /prefers-reduced-motion:\s*reduce/);
   assert.match(pageSource, /mapLocationRequestIdRef\.current \+= 1/);
   assert.match(pageSource, /stopMapLocationTracking\(true\)/);
-  assert.match(
-    pageSource,
-    /<button\s+className="map-station-card"[\s\S]*?type="button"[\s\S]*?aria-label=\{`\$\{plan\.endStation\.name\} 반납 대여소를 지도에서 보기`\}[\s\S]*?onClick=\{onFocusEndStation\}/,
+  const mapChromeSource = pageSource.slice(
+    pageSource.indexOf("function RouteMapChrome"),
+    pageSource.indexOf("function LeafletRouteMap"),
   );
   assert.match(
+    mapChromeSource,
+    /<button\s+className="map-station-card"[\s\S]*?type="button"[\s\S]*?aria-label=\{`지도에서 다음 지점 보기: \$\{nextRouteLeg\.target\.name\}`\}[\s\S]*?onClick=\{onFocusNextTarget\}/,
+  );
+  assert.match(mapChromeSource, /다음 지점 · 출발 대여소/);
+  assert.match(mapChromeSource, /다음 지점 · 경유 대여소/);
+  assert.match(mapChromeSource, /다음 지점 · 반납 대여소/);
+  assert.match(mapChromeSource, /다음 지점 · 도착지/);
+  assert.match(
+    mapChromeSource,
+    /formatDistance\(Math\.round\(nextRouteLeg\.plannedDistanceMeters\)\)/,
+  );
+  assert.match(mapChromeSource, /예상 구간 거리/);
+  assert.doesNotMatch(mapChromeSource, /plan\.endStation|plan\.walkFromMeters/);
+  assert.match(pageSource, /routeProgressSessionId/);
+  assert.match(
     pageSource,
-    /onFocusEndStation=\{\(\) => focusMapPoint\("endStation"\)\}/,
+    /setRouteProgressSessionId\(\(sessionId\) => sessionId \+ 1\)/,
+  );
+  assert.match(pageSource, /onFocusNextTarget=\{focusNextRouteTarget\}/);
+  assert.ok(
+    (pageSource.match(/onFocusNextTarget=\{onFocusNextTarget\}/g) ?? []).length >= 4,
   );
   assert.ok(
-    (pageSource.match(/onFocusEndStation=\{onFocusEndStation\}/g) ?? []).length >= 4,
+    (pageSource.match(/nextRouteLeg=\{nextRouteLeg\}/g) ?? []).length >= 4,
+  );
+  assert.match(
+    pageSource,
+    /focusNextRouteTarget[\s\S]*?focusMapCoordinates\(nextRouteLeg\.target\.coordinates, true\)/,
+  );
+  assert.match(
+    pageSource,
+    /if \(!preserveLocationTracking\) stopMapLocationTracking\(true\)/,
   );
   assert.match(pageSource, /plan\?\.\[target\]\.coordinates/);
   assert.match(
