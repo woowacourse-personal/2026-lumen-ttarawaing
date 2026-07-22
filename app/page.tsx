@@ -1176,6 +1176,7 @@ function LeafletRouteMap({
   headingStatus,
   onLocate,
   onFocusNextTarget,
+  onFocusMarker,
   onMapDragStart,
 }: {
   plan: RoutePlan;
@@ -1193,6 +1194,7 @@ function LeafletRouteMap({
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
   onFocusNextTarget: () => void;
+  onFocusMarker: (coordinates: Coordinates) => void;
   onMapDragStart: () => void;
 }) {
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -1314,16 +1316,19 @@ function LeafletRouteMap({
         className: string,
         tooltip: string,
       ) => {
-        L.marker(coordinates, {
+        const routeMarker = L.marker(coordinates, {
           icon: L.divIcon({
             className: `route-marker-wrapper ${className}-wrapper`,
             html: `<span class="route-marker ${className}"><span class="route-marker-shape"><span class="route-marker-label">${label}</span></span></span>`,
             iconSize: [60, 60],
             iconAnchor: [30, 60],
           }),
+          keyboard: true,
+          title: `${tooltip} 지도 핀으로 이동`,
         })
           .bindTooltip(tooltip, { direction: "top", offset: [0, -54] })
-          .addTo(group);
+          .on("click", () => onFocusMarker(coordinates));
+        routeMarker.addTo(group);
       };
 
       const walkTo = geometry.walkTo.path;
@@ -1440,7 +1445,7 @@ function LeafletRouteMap({
     return () => {
       active = false;
     };
-  }, [geometry, geometryStatus, plan, ready, transferStops]);
+  }, [geometry, geometryStatus, onFocusMarker, plan, ready, transferStops]);
 
   useEffect(() => {
     if (!ready || !mapRef.current || !focusRequest) return;
@@ -1591,6 +1596,7 @@ function KakaoRouteMap({
   headingStatus,
   onLocate,
   onFocusNextTarget,
+  onFocusMarker,
   onMapDragStart,
   onError,
 }: {
@@ -1609,6 +1615,7 @@ function KakaoRouteMap({
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
   onFocusNextTarget: () => void;
+  onFocusMarker: (coordinates: Coordinates) => void;
   onMapDragStart: () => void;
   onError: () => void;
 }) {
@@ -1785,10 +1792,15 @@ function KakaoRouteMap({
       className: string,
       tooltip: string,
     ) => {
-      const wrapper = document.createElement("span");
+      const wrapper = document.createElement("button");
+      wrapper.type = "button";
       wrapper.className = `route-marker-wrapper kakao-route-marker ${className}-wrapper`;
       wrapper.title = tooltip;
-      wrapper.setAttribute("aria-hidden", "true");
+      wrapper.setAttribute("aria-label", `${tooltip} 지도 핀으로 이동`);
+      wrapper.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onFocusMarker(coordinates);
+      });
       const marker = document.createElement("span");
       marker.className = `route-marker ${className}`;
       const markerShape = document.createElement("span");
@@ -1803,6 +1815,7 @@ function KakaoRouteMap({
         map,
         position: toLatLng(coordinates),
         content: wrapper,
+        clickable: true,
         xAnchor: 0.5,
         yAnchor: 1,
         zIndex: 4,
@@ -1906,7 +1919,15 @@ function KakaoRouteMap({
       window.cancelAnimationFrame(animationFrame);
       clearMapObjects();
     };
-  }, [clearMapObjects, geometry, geometryStatus, plan, ready, transferStops]);
+  }, [
+    clearMapObjects,
+    geometry,
+    geometryStatus,
+    onFocusMarker,
+    plan,
+    ready,
+    transferStops,
+  ]);
 
   useEffect(() => {
     const sdk = sdkRef.current;
@@ -2016,6 +2037,7 @@ function RouteMap({
   headingStatus,
   onLocate,
   onFocusNextTarget,
+  onFocusMarker,
   onMapDragStart,
 }: {
   plan: RoutePlan;
@@ -2033,6 +2055,7 @@ function RouteMap({
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
   onFocusNextTarget: () => void;
+  onFocusMarker: (coordinates: Coordinates) => void;
   onMapDragStart: () => void;
 }) {
   const [provider, setProvider] = useState<"loading" | "kakao" | "leaflet">("loading");
@@ -2070,6 +2093,7 @@ function RouteMap({
         headingStatus={headingStatus}
         onLocate={onLocate}
         onFocusNextTarget={onFocusNextTarget}
+        onFocusMarker={onFocusMarker}
         onMapDragStart={onMapDragStart}
         onError={useLeafletFallback}
       />
@@ -2093,6 +2117,7 @@ function RouteMap({
         headingStatus={headingStatus}
         onLocate={onLocate}
         onFocusNextTarget={onFocusNextTarget}
+        onFocusMarker={onFocusMarker}
         onMapDragStart={onMapDragStart}
       />
     );
@@ -3470,6 +3495,7 @@ export default function Home() {
               headingStatus={mapHeadingStatus}
               onLocate={locateMapUser}
               onFocusNextTarget={focusNextRouteTarget}
+              onFocusMarker={focusMapCoordinates}
               onMapDragStart={minimizeMobileDetailsFromMapDrag}
             />
           ) : (

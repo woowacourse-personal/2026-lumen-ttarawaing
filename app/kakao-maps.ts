@@ -78,6 +78,7 @@ export type KakaoSdk = {
       map: KakaoMap;
       position: KakaoLatLng;
       content: HTMLElement;
+      clickable?: boolean;
       xAnchor?: number;
       yAnchor?: number;
       zIndex?: number;

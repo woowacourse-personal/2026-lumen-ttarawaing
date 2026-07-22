@@ -1386,8 +1386,20 @@ input:focus-visible {
 }
 
 .kakao-route-marker {
+  padding: 0;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
   line-height: 1;
-  pointer-events: none;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.route-marker-wrapper:focus-visible {
+  outline: 3px solid rgba(0, 167, 123, 0.34);
+  outline-offset: 2px;
 }
 
 .route-marker {

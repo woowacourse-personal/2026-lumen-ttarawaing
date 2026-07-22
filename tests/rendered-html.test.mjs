@@ -493,6 +493,67 @@ test("renders every route marker as a centered teardrop pin", async () => {
   assert.match(pageSource, /\$\{className\}-wrapper/);
 });
 
+test("focuses and zooms the map when a route pin is activated", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  const leafletSource = pageSource.slice(
+    pageSource.indexOf("function LeafletRouteMap"),
+    pageSource.indexOf("function KakaoRouteMap"),
+  );
+  const kakaoSource = pageSource.slice(
+    pageSource.indexOf("function KakaoRouteMap"),
+    pageSource.indexOf("function RouteMap("),
+  );
+
+  assert.match(pageSource, /onFocusMarker=\{focusMapCoordinates\}/);
+  assert.equal(
+    (pageSource.match(/onFocusMarker=\{onFocusMarker\}/g) ?? []).length,
+    2,
+  );
+  assert.match(
+    leafletSource,
+    /\.on\("click", \(\) => onFocusMarker\(coordinates\)\)/,
+  );
+  assert.match(leafletSource, /keyboard:\s*true/);
+  assert.match(
+    leafletSource,
+    /title:\s*`\$\{tooltip\} 지도 핀으로 이동`/,
+  );
+  assert.match(
+    leafletSource,
+    /mapRef\.current\.flyTo\(\s*focusRequest\.coordinates,\s*ROUTE_FOCUS_LEAFLET_ZOOM/,
+  );
+  assert.match(kakaoSource, /document\.createElement\("button"\)/);
+  assert.match(kakaoSource, /wrapper\.type = "button"/);
+  assert.match(
+    kakaoSource,
+    /wrapper\.setAttribute\("aria-label", `\$\{tooltip\} 지도 핀으로 이동`\)/,
+  );
+  assert.match(
+    kakaoSource,
+    /wrapper\.addEventListener\("click", \(event\) => \{[\s\S]*?event\.stopPropagation\(\);[\s\S]*?onFocusMarker\(coordinates\);/,
+  );
+  assert.match(
+    kakaoSource,
+    /content:\s*wrapper,\s*\n\s*clickable:\s*true/,
+  );
+  assert.match(
+    kakaoSource,
+    /map\.setLevel\(ROUTE_FOCUS_KAKAO_LEVEL\);\s*map\.panTo\(position\);/s,
+  );
+  assert.match(
+    styles,
+    /\.kakao-route-marker\s*\{[^}]*cursor:\s*pointer[^}]*pointer-events:\s*auto/s,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.kakao-route-marker\s*\{[^}]*pointer-events:\s*none/s,
+  );
+  assert.match(styles, /\.route-marker-wrapper:focus-visible\s*\{/);
+});
+
 test("focuses the map when each route timeline place is selected", async () => {
   const [pageSource, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
