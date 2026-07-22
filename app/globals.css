@@ -2038,6 +2038,24 @@ input:focus-visible {
     border-bottom-width: 6px;
   }
 
+  .route-form {
+    margin-right: 13px;
+    margin-left: -13px;
+  }
+
+  .pass-selector,
+  .route-history,
+  .form-error {
+    margin-right: 13px;
+    margin-left: 13px;
+  }
+
+  .bike-road-preference,
+  .find-route-button,
+  .reset-route-button {
+    margin-left: 13px;
+  }
+
   .result-section {
     padding: 24px 20px 34px;
     scroll-margin-block-start: 120px;
@@ -2050,6 +2068,7 @@ input:focus-visible {
   }
 
   .map-panel.is-empty {
+    display: none;
     order: 0;
     height: 240px;
     min-height: 240px;

@@ -439,6 +439,33 @@ test("fills the desktop map to the top beside the left-only header", async () =>
   assert.match(mapPanelRule, /height:\s*100vh/);
 });
 
+test("centers the mobile route form and hides only the empty mobile map", async () => {
+  const styles = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  const desktopEmptyMapRule =
+    styles.match(/\.map-panel\.is-empty\s*\{([^}]+)\}/)?.[1] ?? "";
+
+  assert.match(desktopEmptyMapRule, /display:\s*grid/);
+  assert.match(
+    styles,
+    /@media \(max-width: 900px\)[\s\S]*?\.route-form\s*\{[^}]*margin-right:\s*13px[^}]*margin-left:\s*-13px/s,
+  );
+  assert.match(
+    styles,
+    /@media \(max-width: 900px\)[\s\S]*?\.pass-selector,[\s\S]*?\.route-history,[\s\S]*?\.form-error\s*\{[^}]*margin-right:\s*13px[^}]*margin-left:\s*13px/s,
+  );
+  assert.match(
+    styles,
+    /@media \(max-width: 900px\)[\s\S]*?\.bike-road-preference,[\s\S]*?\.find-route-button,[\s\S]*?\.reset-route-button\s*\{[^}]*margin-left:\s*13px/s,
+  );
+  assert.match(
+    styles,
+    /@media \(max-width: 900px\)[\s\S]*?\.map-panel\.is-empty\s*\{[^}]*display:\s*none/s,
+  );
+});
+
 test("centers the route feedback popup over the desktop map area", async () => {
   const styles = await readFile(
     new URL("../app/globals.css", import.meta.url),
