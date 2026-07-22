@@ -260,6 +260,7 @@ const EMPTY_BIKE_LEGS: BikeRouteLeg[] = [];
 const EMPTY_PLANNED_ROUTE_LEGS: PlannedRouteLeg[] = [];
 
 const ROUTE_HISTORY_STORAGE_KEY = "ttarawaing-route-history-v1";
+const BIKE_ROAD_PRIORITY_STORAGE_KEY = "ttarawaing-bike-road-priority-v1";
 const ROUTE_HISTORY_LIMIT = 3;
 
 function isStoredPlace(value: unknown): value is Place {
@@ -706,7 +707,7 @@ function getRouteGeometryStatus(geometry: RouteGeometry): RouteGeometryStatus {
     geometry.walkTo,
     geometry.bike,
     geometry.walkFrom,
-  ].filter((segment) => segment.source === "osrm").length;
+  ].filter((segment) => segment.source === "kakao").length;
 
   if (roadSegmentCount === 3) return "ready";
   if (roadSegmentCount > 0) return "partial";
@@ -717,6 +718,7 @@ function useRouteRecommendation(
   basePlan: RoutePlan | null,
   passType: PassType,
   stations: Station[],
+  preferBikeRoads: boolean,
 ): RouteRecommendation | null {
   const stationAvailabilityKey = useMemo(
     () =>
@@ -737,9 +739,10 @@ function useRouteRecommendation(
             endStation: basePlan.endStation.coordinates,
             destination: basePlan.destination.coordinates,
             destinationAddress: basePlan.destination.address,
+            bikeRouteMode: preferBikeRoads ? "BIKE_ONLY" : "SHORTEST",
           }
         : null,
-    [basePlan],
+    [basePlan, preferBikeRoads],
   );
   const key = useMemo(
     () =>
@@ -1033,7 +1036,6 @@ function RouteMapChrome({
   headingStatus,
   onLocate,
   onFocusNextTarget,
-  showOpenStreetMapAttribution = false,
 }: {
   nextRouteLeg: PlannedRouteLeg;
   ready: boolean;
@@ -1043,10 +1045,7 @@ function RouteMapChrome({
   headingStatus: MapHeadingStatus;
   onLocate: () => void;
   onFocusNextTarget: () => void;
-  showOpenStreetMapAttribution?: boolean;
 }) {
-  const hasOpenStreetMapRoute =
-    geometryStatus === "ready" || geometryStatus === "partial";
   const locationControlBusy =
     locationStatus === "loading" || headingStatus === "requesting";
   const locationControlLabel =
@@ -1087,16 +1086,6 @@ function RouteMapChrome({
           <span className="loading-wheel" aria-hidden="true" />
           <span className="screen-reader-only">경로를 불러오고 있어요</span>
         </div>
-      ) : null}
-      {showOpenStreetMapAttribution && hasOpenStreetMapRoute ? (
-        <a
-          className="map-route-attribution"
-          href="https://www.openstreetmap.org/copyright"
-          target="_blank"
-          rel="noreferrer"
-        >
-          © OpenStreetMap contributors
-        </a>
       ) : null}
       <div className="map-guide-controls">
         <button
@@ -1504,7 +1493,6 @@ function LeafletRouteMap({
       hasLocatedRef.current = false;
       return;
     }
-    const map = mapRef.current;
     let active = true;
 
     void import("leaflet").then((leafletModule) => {
@@ -1574,7 +1562,6 @@ function LeafletRouteMap({
         headingStatus={headingStatus}
         onLocate={onLocate}
         onFocusNextTarget={onFocusNextTarget}
-        showOpenStreetMapAttribution={locationMode === "heading"}
       />
     </div>
   );
@@ -2015,7 +2002,6 @@ function KakaoRouteMap({
         headingStatus={headingStatus}
         onLocate={onLocate}
         onFocusNextTarget={onFocusNextTarget}
-        showOpenStreetMapAttribution
       />
     </div>
   );
@@ -2151,6 +2137,7 @@ export default function Home() {
   } | null>(null);
   const [routeHistory, setRouteHistory] = useState<RouteHistoryItem[]>([]);
   const [passType, setPassType] = useState<PassType>(DEFAULT_PASS_TYPE);
+  const [preferBikeRoads, setPreferBikeRoads] = useState(false);
   const [selectedEndStationId, setSelectedEndStationId] = useState<string>();
   const [alternativesOpen, setAlternativesOpen] = useState(false);
   const [routeDetailsOpen, setRouteDetailsOpen] = useState(true);
@@ -2246,6 +2233,13 @@ export default function Home() {
         PASS_TYPE_STORAGE_KEY,
       );
       if (isPassType(storedPassType)) setPassType(storedPassType);
+      const storedBikeRoadPriority = readStoredValue(
+        window.localStorage,
+        BIKE_ROAD_PRIORITY_STORAGE_KEY,
+      );
+      if (storedBikeRoadPriority === "true" || storedBikeRoadPriority === "false") {
+        setPreferBikeRoads(storedBikeRoadPriority === "true");
+      }
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
@@ -2294,7 +2288,12 @@ export default function Home() {
         : null,
     [committedRoute, selectedEndStationId, stations],
   );
-  const routeRecommendation = useRouteRecommendation(basePlan, passType, stations);
+  const routeRecommendation = useRouteRecommendation(
+    basePlan,
+    passType,
+    stations,
+    preferBikeRoads,
+  );
   const plan = routeRecommendation?.plan ?? null;
   const transferStops = routeRecommendation?.transferStops ?? EMPTY_STATIONS;
   const bikeLegs = routeRecommendation?.bikeLegs ?? EMPTY_BIKE_LEGS;
@@ -2318,6 +2317,7 @@ export default function Home() {
         ? [
             routeProgressSessionId,
             passType,
+            preferBikeRoads ? "bike-roads" : "shortest",
             plan.origin.id,
             plan.origin.coordinates.join(","),
             ...plannedRouteLegs.map(
@@ -2325,7 +2325,7 @@ export default function Home() {
             ),
           ].join("|")
         : "no-route",
-    [passType, plan, plannedRouteLegs, routeProgressSessionId],
+    [passType, plan, plannedRouteLegs, preferBikeRoads, routeProgressSessionId],
   );
   useEffect(() => {
     routeProgressConfigRef.current = {
@@ -2366,6 +2366,16 @@ export default function Home() {
     },
     [passType],
   );
+
+  const chooseBikeRoadPriority = useCallback((enabled: boolean) => {
+    setRouteProgressSessionId((sessionId) => sessionId + 1);
+    setPreferBikeRoads(enabled);
+    writeStoredValue(
+      window.localStorage,
+      BIKE_ROAD_PRIORITY_STORAGE_KEY,
+      String(enabled),
+    );
+  }, []);
 
   const rememberRoute = useCallback((route: RouteHistoryItem) => {
     if (
@@ -3039,6 +3049,27 @@ export default function Home() {
                 </p>
               </fieldset>
 
+              <label
+                className={`bike-road-preference${preferBikeRoads ? " is-selected" : ""}`}
+              >
+                <span className="bike-road-preference-copy">
+                  <strong>자전거도로 우선</strong>
+                  <small>가능한 구간에서 자전거도로를 우선한 경로를 찾아요.</small>
+                </span>
+                <span className="bike-road-switch" aria-hidden="true">
+                  <span />
+                </span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={preferBikeRoads}
+                  aria-label="자전거도로 우선 경로 사용"
+                  onChange={(event) =>
+                    chooseBikeRoadPriority(event.currentTarget.checked)
+                  }
+                />
+              </label>
+
               {errorMessage ? (
                 <p className="form-error" role="alert">
                   {errorMessage}
@@ -3240,8 +3271,8 @@ export default function Home() {
                       <small>
                         {formatDistance(plan.walkToMeters)} · {passRouteStatus === "loading"
                           ? "경로 계산 중"
-                          : routeRecommendation?.geometry.walkTo.source === "osrm"
-                            ? "도로 경로 기준"
+                          : routeRecommendation?.geometry.walkTo.source === "kakao"
+                            ? "카카오맵 경로 기준"
                             : "직선거리 기반 예상"}
                       </small>
                     </div>
@@ -3328,8 +3359,8 @@ export default function Home() {
                             <small>
                               {formatDistance(Math.round(leg.distanceMeters))} · {passRouteStatus === "loading"
                                 ? "경로 계산 중"
-                                : leg.source === "osrm"
-                                  ? "도로 경로 기준"
+                                : leg.source === "kakao"
+                                  ? "카카오맵 경로 기준"
                                   : "직선거리 기반 예상"}
                             </small>
                           </div>

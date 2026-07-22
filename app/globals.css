@@ -294,6 +294,96 @@ input:focus-visible {
   line-height: 1.45;
 }
 
+.bike-road-preference {
+  position: relative;
+  display: flex;
+  width: calc(100% - 26px);
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 12px 0 0 26px;
+  padding: 10px 12px 10px 14px;
+  cursor: pointer;
+  border: 1px solid #dce5df;
+  border-radius: 12px;
+  background: #fafcfa;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.bike-road-preference:hover {
+  border-color: #9fd8c5;
+}
+
+.bike-road-preference.is-selected {
+  border-color: #55c5a4;
+  background: var(--green-soft);
+}
+
+.bike-road-preference:focus-within {
+  outline: 2px solid rgba(0, 167, 123, 0.34);
+  outline-offset: 2px;
+}
+
+.bike-road-preference input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  margin: 0;
+  opacity: 0;
+}
+
+.bike-road-preference-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.bike-road-preference-copy strong {
+  color: #34463e;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.bike-road-preference-copy small {
+  color: #84918b;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.bike-road-switch {
+  display: flex;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px;
+  pointer-events: none;
+  border-radius: 999px;
+  background: #c7d1cc;
+  transition: background 150ms ease;
+}
+
+.bike-road-switch span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(23, 54, 43, 0.18);
+  transition: transform 150ms ease;
+}
+
+.bike-road-preference.is-selected .bike-road-switch {
+  background: var(--green);
+}
+
+.bike-road-preference.is-selected .bike-road-switch span {
+  transform: translateX(14px);
+}
+
 .place-field {
   position: relative;
 }
@@ -1603,26 +1693,6 @@ input:focus-visible {
     opacity: 0;
     transform: scale(1.24);
   }
-}
-
-.map-route-attribution {
-  position: absolute;
-  z-index: 400;
-  right: 8px;
-  bottom: 4px;
-  color: #5f6e67;
-  font-size: 9px;
-  font-weight: 560;
-  line-height: 1.2;
-  text-decoration: none;
-  text-shadow:
-    0 1px 2px white,
-    0 0 4px white;
-}
-
-.map-route-attribution:hover {
-  color: var(--green-dark);
-  text-decoration: underline;
 }
 
 .map-guide-controls {

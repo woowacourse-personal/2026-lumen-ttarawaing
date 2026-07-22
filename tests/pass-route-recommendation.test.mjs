@@ -23,7 +23,7 @@ const stations = [
 function makeGeometry({
   totalBikeMinutes,
   legMinutes = [totalBikeMinutes],
-  source = "osrm",
+  source = "kakao",
   transferStations = [],
 }) {
   const bikePath = [
@@ -34,7 +34,7 @@ function makeGeometry({
   return {
     walkTo: {
       path: [baseInput.origin, baseInput.startStation],
-      source: "osrm",
+      source: "kakao",
       distanceMeters: 120,
       durationSeconds: 120,
     },
@@ -51,7 +51,7 @@ function makeGeometry({
     })),
     walkFrom: {
       path: [baseInput.endStation, baseInput.destination],
-      source: "osrm",
+      source: "kakao",
       distanceMeters: 80,
       durationSeconds: 60,
     },
@@ -246,7 +246,7 @@ test("기본 도로 경로를 후보 탐색 전에 전달해 제한시간 폴백
     },
   });
 
-  assert.equal(capturedBaseGeometry?.bike.source, "osrm");
+  assert.equal(capturedBaseGeometry?.bike.source, "kakao");
   assert.equal(capturedBaseGeometry, result.geometry);
 });
 

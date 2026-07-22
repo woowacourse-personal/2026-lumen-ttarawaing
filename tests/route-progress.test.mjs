@@ -37,7 +37,7 @@ function geometryWithTransfers() {
   return {
     walkTo: {
       path: [[37.5, 127], startStation.coordinates],
-      source: "osrm",
+      source: "kakao",
       distanceMeters: 720,
       durationSeconds: 540,
     },
@@ -48,18 +48,18 @@ function geometryWithTransfers() {
         secondTransfer.coordinates,
         endStation.coordinates,
       ],
-      source: "osrm",
+      source: "kakao",
       distanceMeters: 3_900,
       durationSeconds: 1_200,
     },
     bikeLegs: [
-      { source: "osrm", distanceMeters: 1_000, durationSeconds: 300 },
-      { source: "osrm", distanceMeters: 1_200, durationSeconds: 360 },
-      { source: "osrm", distanceMeters: 1_700, durationSeconds: 540 },
+      { source: "kakao", distanceMeters: 1_000, durationSeconds: 300 },
+      { source: "kakao", distanceMeters: 1_200, durationSeconds: 360 },
+      { source: "kakao", distanceMeters: 1_700, durationSeconds: 540 },
     ],
     walkFrom: {
       path: [endStation.coordinates, destination.coordinates],
-      source: "osrm",
+      source: "kakao",
       distanceMeters: 540,
       durationSeconds: 420,
     },
@@ -374,7 +374,7 @@ test("starts from the first leg when the same route opens in a new session", () 
 test("uses one bike leg directly to the return station when there are no transfers", () => {
   const geometry = geometryWithTransfers();
   geometry.bikeLegs = [
-    { source: "osrm", distanceMeters: 3_900, durationSeconds: 1_200 },
+    { source: "kakao", distanceMeters: 3_900, durationSeconds: 1_200 },
   ];
   const legs = buildPlannedRouteLegs({
     geometry,

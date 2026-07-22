@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-globalThis.window = {
-  setTimeout: globalThis.setTimeout.bind(globalThis),
-  clearTimeout: globalThis.clearTimeout.bind(globalThis),
-};
-
 let importSequence = 0;
 
 async function importFreshRouteGeometry() {
@@ -23,134 +18,113 @@ function routeInput(offset = 0) {
   };
 }
 
-function parseRequestedCoordinates(url) {
-  const encodedCoordinates = String(url).match(
-    /\/route\/v1\/driving\/([^?]+)/,
-  )?.[1];
-  assert.ok(encodedCoordinates, "the OSRM URL contains route coordinates");
-  return decodeURIComponent(encodedCoordinates)
-    .split(";")
-    .map((coordinate) => coordinate.split(",").map(Number));
+function parseRouteRequest(init = {}) {
+  assert.equal(init.method, "POST");
+  return JSON.parse(String(init.body));
 }
 
-function successfulRouteResponse(url) {
-  const coordinates = parseRequestedCoordinates(url);
-  const geometryCoordinates = coordinates.flatMap((coordinate, index) => {
-    if (index === coordinates.length - 1) return [coordinate];
-    const next = coordinates[index + 1];
-    return [
-      coordinate,
-      [
-        (coordinate[0] + next[0]) / 2 + 0.00005,
-        (coordinate[1] + next[1]) / 2 + 0.00005,
-      ],
+function successfulRouteResponse(init = {}) {
+  const request = parseRouteRequest(init);
+  const coordinates = request.coordinates;
+  const legs = coordinates.slice(0, -1).map((from, index) => {
+    const to = coordinates[index + 1];
+    const midpoint = [
+      (from[0] + to[0]) / 2 + 0.00005,
+      (from[1] + to[1]) / 2 + 0.00005,
     ];
-  });
-  const legCount = coordinates.length - 1;
-
-  return {
-    ok: true,
-    status: 200,
-    async json() {
-      return {
-        code: "Ok",
-        routes: [
-          {
-            distance: legCount * 180,
-            duration: legCount * 90,
-            legs: Array.from({ length: legCount }, () => ({
-              distance: 180,
-              duration: 90,
-            })),
-            geometry: {
-              type: "LineString",
-              coordinates: geometryCoordinates,
-            },
+    return {
+      properties: { distance: 180, time: 90 },
+      steps: [
+        {
+          properties: { distance: 180, time: 90, x: from[1], y: from[0] },
+          path: {
+            points: [
+              [from[1], from[0]],
+              [midpoint[1], midpoint[0]],
+              [to[1], to[0]],
+            ],
           },
-        ],
-        waypoints: coordinates.map(() => ({ distance: 0 })),
-      };
+        },
+      ],
+    };
+  });
+  return Response.json({
+    status: "OK",
+    route: {
+      properties: {
+        totalDistance: legs.length * 180,
+        totalTime: legs.length * 90,
+        landingUrl: "https://map.kakao.com/",
+      },
+      legs,
     },
-  };
+  });
 }
 
 function failedRouteResponse() {
-  return {
-    ok: false,
-    status: 503,
-    async json() {
-      return {};
-    },
-  };
+  return Response.json(
+    { error: "Route calculation is temporarily unavailable." },
+    { status: 503 },
+  );
 }
 
-async function resolvesWithin(promise, timeoutMs = 4_000) {
-  let timeoutId;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise((_resolve, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error("Route fallback did not finish in time.")),
-          timeoutMs,
-        );
-      }),
-    ]);
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-test("a failed bicycle route falls back only that segment while both walks keep road geometry", async (t) => {
+test("a failed bicycle route falls back only that segment while both walks keep Kakao geometry", async (t) => {
   const { loadRouteGeometry } = await importFreshRouteGeometry();
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (_url, init) => {
     requestCount += 1;
-    return requestCount === 2
+    const request = parseRouteRequest(init);
+    return request.mode === "bike"
       ? failedRouteResponse()
-      : successfulRouteResponse(url);
+      : successfulRouteResponse(init);
   };
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
 
-  const geometry = await resolvesWithin(loadRouteGeometry(routeInput(0.01)));
+  const geometry = await loadRouteGeometry(routeInput(0.01));
 
   assert.equal(requestCount, 3);
-  assert.equal(geometry.walkTo.source, "osrm");
-  assert.ok(geometry.walkTo.path.length > 2, "the first walk keeps its road path");
+  assert.equal(geometry.walkTo.source, "kakao");
+  assert.ok(geometry.walkTo.path.length > 2);
   assert.equal(geometry.bike.source, "direct");
   assert.equal(geometry.bike.path.length, 2);
   assert.deepEqual(geometry.bikeLegs.map((leg) => leg.source), ["direct"]);
-  assert.equal(geometry.walkFrom.source, "osrm");
-  assert.ok(geometry.walkFrom.path.length > 2, "the final walk keeps its road path");
+  assert.equal(geometry.walkFrom.source, "kakao");
+  assert.ok(geometry.walkFrom.path.length > 2);
 });
 
-test("one failed walk does not discard the successful bicycle and other walk routes", async (t) => {
+test("one failed walk does not discard the successful Kakao bicycle and other walk routes", async (t) => {
+  const input = routeInput(0.03);
   const { loadRouteGeometry } = await importFreshRouteGeometry();
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (_url, init) => {
     requestCount += 1;
-    return requestCount === 1
+    const request = parseRouteRequest(init);
+    const startsAtOrigin =
+      request.mode === "walk" &&
+      request.coordinates[0][0] === input.origin[0] &&
+      request.coordinates[0][1] === input.origin[1];
+    return startsAtOrigin
       ? failedRouteResponse()
-      : successfulRouteResponse(url);
+      : successfulRouteResponse(init);
   };
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
 
-  const geometry = await resolvesWithin(loadRouteGeometry(routeInput(0.03)));
+  const geometry = await loadRouteGeometry(input);
 
   assert.equal(requestCount, 3);
   assert.equal(geometry.walkTo.source, "direct");
   assert.equal(geometry.walkTo.path.length, 2);
-  assert.equal(geometry.bike.source, "osrm");
-  assert.ok(geometry.bike.path.length > 2, "the bicycle road path is preserved");
-  assert.deepEqual(geometry.bikeLegs.map((leg) => leg.source), ["osrm"]);
-  assert.equal(geometry.walkFrom.source, "osrm");
-  assert.ok(geometry.walkFrom.path.length > 2, "the successful walk road path is preserved");
+  assert.equal(geometry.bike.source, "kakao");
+  assert.ok(geometry.bike.path.length > 2);
+  assert.deepEqual(geometry.bikeLegs.map((leg) => leg.source), ["kakao"]);
+  assert.equal(geometry.walkFrom.source, "kakao");
+  assert.ok(geometry.walkFrom.path.length > 2);
 });
 
 test("all failed requests return a complete direct fallback in finite time", async (t) => {
@@ -165,7 +139,7 @@ test("all failed requests return a complete direct fallback in finite time", asy
     globalThis.fetch = originalFetch;
   });
 
-  const geometry = await resolvesWithin(loadRouteGeometry(routeInput(0.05)));
+  const geometry = await loadRouteGeometry(routeInput(0.05));
 
   assert.equal(requestCount, 3);
   assert.deepEqual(

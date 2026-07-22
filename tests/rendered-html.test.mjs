@@ -144,6 +144,22 @@ test("defaults to a remembered one, two, three-hour, or unlimited pass choice", 
   assert.match(planningSource, /DEFAULT_PASS_TYPE: PassType = "60"/);
 });
 
+test("offers and remembers the Kakao bicycle-road priority option", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pageSource, /자전거도로 우선/);
+  assert.match(pageSource, /role="switch"/);
+  assert.match(pageSource, /checked=\{preferBikeRoads\}/);
+  assert.match(pageSource, /BIKE_ROAD_PRIORITY_STORAGE_KEY/);
+  assert.match(pageSource, /bikeRouteMode: preferBikeRoads \? "BIKE_ONLY" : "SHORTEST"/);
+  assert.match(pageSource, /writeStoredValue\([\s\S]*BIKE_ROAD_PRIORITY_STORAGE_KEY/);
+  assert.match(styles, /\.bike-road-preference/);
+  assert.match(styles, /\.bike-road-switch/);
+});
+
 test("uses a five-minute buffer and the theoretical minimum transfer count", () => {
   assert.equal(getPassSafeRideMinutes("60"), 55);
   assert.equal(getPassSafeRideMinutes("120"), 115);
@@ -219,17 +235,17 @@ test("builds and validates the minimum number of road-routed transfer stops", as
   );
   assert.match(
     recommendationSource,
-    /geometry\.bikeLegs\.every\(\(leg\) => leg\.source === "osrm"\)/,
+    /geometry\.bikeLegs\.every\(\(leg\) => leg\.source === "kakao"\)/,
   );
   assert.match(recommendationSource, /catch \(error: unknown\)[\s\S]*continue;/);
   assert.match(routeSource, /transferStations\?: Coordinates\[\]/);
-  assert.match(routeSource, /route\.legs/);
-  assert.match(routeSource, /loadBikeRoute\(getBikeCoordinates\(input\), signal\)/);
+  assert.match(routeSource, /response\.route\.legs/);
+  assert.match(routeSource, /loadBikeRoute\(bikeCoordinates, getBikeRouteMode\(input\), signal\)/);
   assert.match(routeSource, /bikeLegs: BikeRouteLeg\[\]/);
-  assert.match(routeSource, /attachRequestedWaypoints\(path, coordinates\)/);
-  assert.match(routeSource, /connectorDistance \/ bicycleMetersPerSecond/);
+  assert.match(routeSource, /attachRequestedEndpoints/);
+  assert.match(routeSource, /splitKakaoRouteCoordinates/);
   assert.match(routeSource, /throwIfAborted\(signal\)/);
-  assert.match(routeSource, /raceWithAbort/);
+  assert.match(routeSource, /Promise\.all/);
 });
 
 test("shows transfer stops consistently in the timeline and maps", async () => {
@@ -274,7 +290,7 @@ test("clears the active route from a dedicated re-entry button", async () => {
   assert.doesNotMatch(pageSource, /replaceChildren\(\)/);
 });
 
-test("draws road geometry instead of manufactured map curves", async () => {
+test("draws Kakao REST road geometry instead of manufactured map curves or OSRM routes", async () => {
   const [pageSource, routeSource] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/route-geometry.ts", import.meta.url), "utf8"),
@@ -289,15 +305,13 @@ test("draws road geometry instead of manufactured map curves", async () => {
     pageSource,
     /map-tools|providerLabel|카카오맵 실제 지도|도로 경로 · 짧은 구간 보정/,
   );
-  assert.match(routeSource, /routing\.openstreetmap\.de/);
-  assert.match(routeSource, /routed-foot/);
-  assert.match(routeSource, /routed-bike/);
-  assert.match(routeSource, /REQUEST_INTERVAL_MS = 1_100/);
-  assert.match(routeSource, /nearest\/v1\/driving/);
-  assert.match(routeSource, /table\/v1\/driving/);
-  assert.match(routeSource, /isSuspiciousFootDetour/);
-  assert.match(routeSource, /extractFootAccessRoadName/);
-  assert.match(pageSource, /originAddress: basePlan\.origin\.address/);
+  assert.match(routeSource, /ROUTE_API_URL = "\/api\/routes"/);
+  assert.match(routeSource, /type KakaoRoutePayload/);
+  assert.match(routeSource, /requestKakaoWalkSegment/);
+  assert.match(routeSource, /requestKakaoBikeRoute/);
+  assert.match(routeSource, /bikeRouteMode/);
+  assert.doesNotMatch(routeSource, /routing\.openstreetmap\.de|routed-foot|routed-bike|OSRM/i);
+  assert.match(pageSource, /bikeRouteMode: preferBikeRoads/);
 });
 
 test("shows a centered spinner instead of temporary dotted route geometry", async () => {

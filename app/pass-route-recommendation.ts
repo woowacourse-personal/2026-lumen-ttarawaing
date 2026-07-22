@@ -145,7 +145,7 @@ export async function recommendPassTransferRoute<
     return { geometry: baseGeometry, transferStops: [], status: "not-needed" };
   }
 
-  if (baseGeometry.bike.source !== "osrm") {
+  if (baseGeometry.bike.source !== "kakao") {
     return { geometry: baseGeometry, transferStops: [], status: "unavailable" };
   }
 
@@ -238,8 +238,8 @@ export async function recommendPassTransferRoute<
         (leg) => leg.durationSeconds / 60,
       );
       const allRoadLegs =
-        geometry.bike.source === "osrm" &&
-        geometry.bikeLegs.every((leg) => leg.source === "osrm");
+        geometry.bike.source === "kakao" &&
+        geometry.bikeLegs.every((leg) => leg.source === "kakao");
       if (
         allRoadLegs &&
         areBikeLegsWithinPassLimit(bikeLegMinutes, passType)

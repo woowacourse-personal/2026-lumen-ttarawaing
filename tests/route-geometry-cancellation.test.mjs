@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-globalThis.window = {
-  setTimeout: globalThis.setTimeout.bind(globalThis),
-  clearTimeout: globalThis.clearTimeout.bind(globalThis),
-};
-
 let importSequence = 0;
 
 async function importFreshRouteGeometry() {
@@ -43,40 +38,31 @@ function hangingFetch(onRequest) {
   };
 }
 
-function successfulRouteResponse(url) {
-  const encodedCoordinates = String(url).match(
-    /\/route\/v1\/driving\/([^?]+)/,
-  )?.[1];
-  assert.ok(encodedCoordinates, "the OSRM URL contains route coordinates");
-  const coordinates = decodeURIComponent(encodedCoordinates)
-    .split(";")
-    .map((coordinate) => coordinate.split(",").map(Number));
-  const legCount = coordinates.length - 1;
-
-  return {
-    ok: true,
-    status: 200,
-    async json() {
-      return {
-        code: "Ok",
-        routes: [
-          {
-            distance: legCount * 100,
-            duration: legCount * 60,
-            legs: Array.from({ length: legCount }, () => ({
-              distance: 100,
-              duration: 60,
-            })),
-            geometry: {
-              type: "LineString",
-              coordinates,
-            },
-          },
-        ],
-        waypoints: coordinates.map(() => ({ distance: 0 })),
-      };
+function successfulRouteResponse(init = {}) {
+  const request = JSON.parse(String(init.body));
+  const legs = request.coordinates.slice(0, -1).map((from, index) => {
+    const to = request.coordinates[index + 1];
+    return {
+      properties: { distance: 100, time: 60 },
+      steps: [
+        {
+          properties: { distance: 100, time: 60, x: from[1], y: from[0] },
+          path: { points: [[from[1], from[0]], [to[1], to[0]]] },
+        },
+      ],
+    };
+  });
+  return Response.json({
+    status: "OK",
+    route: {
+      properties: {
+        totalDistance: legs.length * 100,
+        totalTime: legs.length * 60,
+        landingUrl: "https://map.kakao.com/",
+      },
+      legs,
     },
-  };
+  });
 }
 
 async function waitUntil(predicate, timeoutMs = 500) {
@@ -106,24 +92,7 @@ async function rejectsPromptly(promise, timeoutMs = 250) {
   }
 }
 
-async function resolvesWithin(promise, timeoutMs) {
-  let timeoutId;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise((_resolve, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error("The current caller was canceled too.")),
-          timeoutMs,
-        );
-      }),
-    ]);
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-test("queued and active route requests abort promptly without starting later segments", async (t) => {
+test("aborting a route cancels all three parallel Kakao segment requests", async (t) => {
   const { loadRouteGeometry } = await importFreshRouteGeometry();
   const originalFetch = globalThis.fetch;
   const requestedSignals = [];
@@ -132,82 +101,66 @@ test("queued and active route requests abort promptly without starting later seg
     globalThis.fetch = originalFetch;
   });
 
-  const activeController = new AbortController();
-  const queuedController = new AbortController();
-  const active = loadRouteGeometry(routeInput(0), {
-    signal: activeController.signal,
+  const controller = new AbortController();
+  const pending = loadRouteGeometry(routeInput(0), {
+    signal: controller.signal,
   });
-  await waitUntil(() => requestedSignals.length === 1);
-  const queued = loadRouteGeometry(routeInput(0.02), queuedController.signal);
+  await waitUntil(() => requestedSignals.length === 3);
 
-  queuedController.abort();
-  await rejectsPromptly(queued);
-  assert.equal(requestedSignals.length, 1, "the canceled queued request never fetched");
-
-  activeController.abort();
-  await rejectsPromptly(active);
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(requestedSignals.length, 1, "abort did not start bike or final walk requests");
-  assert.equal(requestedSignals[0].aborted, true, "active fetch received the abort");
+  controller.abort();
+  await rejectsPromptly(pending);
+  assert.equal(requestedSignals.every((signal) => signal.aborted), true);
 });
 
-test("aborting during the throttle wait skips the next route segment", async (t) => {
+test("an already canceled route never starts a Kakao request", async (t) => {
   const { loadRouteGeometry } = await importFreshRouteGeometry();
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async () => {
     requestCount += 1;
-    return successfulRouteResponse(url);
+    return new Promise(() => {});
   };
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
 
   const controller = new AbortController();
-  const pending = loadRouteGeometry(routeInput(0.04), controller.signal);
-  await waitUntil(() => requestCount === 1);
-  await new Promise((resolve) => setTimeout(resolve, 20));
-
   controller.abort();
-  await rejectsPromptly(pending);
-  await new Promise((resolve) => setTimeout(resolve, 1_200));
-  assert.equal(requestCount, 1, "the bicycle request was canceled before fetch");
+  await assert.rejects(
+    loadRouteGeometry(routeInput(0.04), controller.signal),
+    { name: "AbortError" },
+  );
+  assert.equal(requestCount, 0);
 });
 
-test("canceling one same-key caller does not cancel another caller's request", async (t) => {
+test("canceling one same-key caller does not cancel another caller's Kakao requests", async (t) => {
   const { loadRouteGeometry } = await importFreshRouteGeometry();
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
   globalThis.fetch = (url, init = {}) => {
     requestCount += 1;
-    if (requestCount === 1) {
+    if (requestCount <= 3) {
       return hangingFetch(() => {})(url, init);
     }
-    return Promise.resolve(successfulRouteResponse(url));
+    return Promise.resolve(successfulRouteResponse(init));
   };
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
 
-  const point = [37.55, 126.95];
-  const input = {
-    origin: point,
-    startStation: point,
-    endStation: point,
-    destination: point,
-  };
+  const input = routeInput(0.08);
   const canceledController = new AbortController();
   const currentController = new AbortController();
   const canceled = loadRouteGeometry(input, canceledController.signal);
-  await waitUntil(() => requestCount === 1);
+  await waitUntil(() => requestCount === 3);
   const current = loadRouteGeometry(input, currentController.signal);
 
   canceledController.abort();
   await rejectsPromptly(canceled);
-  const geometry = await resolvesWithin(current, 4_000);
+  const geometry = await current;
 
-  assert.equal(geometry.walkTo.source, "osrm");
-  assert.equal(geometry.bike.source, "osrm");
-  assert.equal(geometry.walkFrom.source, "osrm");
-  assert.equal(requestCount, 3, "the current caller completed its own foot and bike requests");
+  assert.equal(geometry.walkTo.source, "kakao");
+  assert.equal(geometry.bike.source, "kakao");
+  assert.equal(geometry.walkFrom.source, "kakao");
+  assert.equal(requestCount, 6);
 });
