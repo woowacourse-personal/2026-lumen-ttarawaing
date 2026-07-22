@@ -149,6 +149,10 @@ input:focus-visible {
   border-bottom: 8px solid #f2f5f3;
 }
 
+.workspace:not(.has-route) .search-section {
+  border-bottom: 0;
+}
+
 .section-kicker {
   display: inline-flex;
   align-items: center;

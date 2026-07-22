@@ -456,6 +456,26 @@ test("fills the desktop map to the top beside the left-only header", async () =>
   assert.match(mapPanelRule, /height:\s*100vh/);
 });
 
+test("removes the search divider only from the initial screen", async () => {
+  const [pageSource, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  const searchSectionRule =
+    styles.match(/\.search-section\s*\{([^}]+)\}/)?.[1] ?? "";
+  const initialSearchSectionRule =
+    styles.match(
+      /\.workspace:not\(\.has-route\) \.search-section\s*\{([^}]+)\}/,
+    )?.[1] ?? "";
+
+  assert.match(searchSectionRule, /border-bottom:\s*8px solid #f2f5f3/);
+  assert.match(initialSearchSectionRule, /border-bottom:\s*0/);
+  assert.match(
+    pageSource,
+    /className=\{`workspace\$\{plan \? " has-route" : ""\}/,
+  );
+});
+
 test("centers the mobile rail and place fields as one route form and hides only the empty mobile map", async () => {
   const styles = await readFile(
     new URL("../app/globals.css", import.meta.url),
