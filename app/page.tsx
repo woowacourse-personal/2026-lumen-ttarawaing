@@ -3304,11 +3304,12 @@ export default function Home() {
                     <div>
                       <strong>걸어서 {plan.walkToMinutes}분</strong>
                       <small>
-                        {formatDistance(plan.walkToMeters)} · {passRouteStatus === "loading"
-                          ? "경로 계산 중"
-                          : routeRecommendation?.geometry.walkTo.source === "kakao"
-                            ? "카카오맵 경로 기준"
-                            : "직선거리 기반 예상"}
+                        {formatDistance(plan.walkToMeters)}
+                        {passRouteStatus === "loading"
+                          ? " · 경로 계산 중"
+                          : routeRecommendation?.geometry.walkTo.source === "direct"
+                            ? " · 직선거리 기반 예상"
+                            : null}
                       </small>
                     </div>
                   </li>
@@ -3392,11 +3393,12 @@ export default function Home() {
                                 : `따릉이로 ${legMinutes}분`}
                             </strong>
                             <small>
-                              {formatDistance(Math.round(leg.distanceMeters))} · {passRouteStatus === "loading"
-                                ? "경로 계산 중"
-                                : leg.source === "kakao"
-                                  ? "카카오맵 경로 기준"
-                                  : "직선거리 기반 예상"}
+                              {formatDistance(Math.round(leg.distanceMeters))}
+                              {passRouteStatus === "loading"
+                                ? " · 경로 계산 중"
+                                : leg.source === "direct"
+                                  ? " · 직선거리 기반 예상"
+                                  : null}
                             </small>
                           </div>
                         </li>
@@ -3516,7 +3518,7 @@ export default function Home() {
                     </span>
                     <div>
                       <strong>걸어서 {plan.walkFromMinutes}분</strong>
-                      <small>{formatDistance(plan.walkFromMeters)} · 목적지까지</small>
+                      <small>{formatDistance(plan.walkFromMeters)}</small>
                     </div>
                   </li>
                   <li className="timeline-place destination-place">

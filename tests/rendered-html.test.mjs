@@ -275,6 +275,25 @@ test("shows transfer stops consistently in the timeline and maps", async () => {
   assert.match(styles, /\.transfer-station \.station-number/);
 });
 
+test("keeps timeline distance labels concise", async () => {
+  const pageSource = await readFile(
+    new URL("../app/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(pageSource, /카카오맵 경로 기준/);
+  assert.doesNotMatch(
+    pageSource,
+    /formatDistance\(plan\.walkFromMeters\)\} · 목적지까지/,
+  );
+  assert.match(
+    pageSource,
+    /<small>\{formatDistance\(plan\.walkFromMeters\)\}<\/small>/,
+  );
+  assert.match(pageSource, /목적지까지 \{formatDistance\(/);
+  assert.match(pageSource, /" · 직선거리 기반 예상"/);
+});
+
 test("clears the active route from the re-entry button and top brand", async () => {
   const [pageSource, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
