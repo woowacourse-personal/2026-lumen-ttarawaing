@@ -2,7 +2,7 @@
 
 > 출발지부터 따릉이 대여·반납 대여소와 목적지까지 한 번에 안내하는 통합 경로 서비스
 
-[서비스 바로가기](https://ttarawaing.dnsxo0712.chatgpt.site)
+[서비스 바로가기](https://ttarawaing.vercel.app)
 
 ![따라와잉 서비스 미리보기](./public/og-v2.png)
 
