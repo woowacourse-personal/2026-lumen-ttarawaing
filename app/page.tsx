@@ -1906,7 +1906,7 @@ function KakaoRouteMap({
       let dragState: {
         pointerId: number;
         startPointer: { x: number; y: number };
-        lastPointer: { x: number; y: number };
+        startOverlayPoint: { x: number; y: number };
         moved: boolean;
         mapWasDraggable: boolean;
       } | null = null;
@@ -1918,14 +1918,13 @@ function KakaoRouteMap({
         const projection = map.getProjection();
         const currentPointer = { x: event.clientX, y: event.clientY };
         const point = getDraggedOverlayPoint(
-          projection.containerPointFromCoords(overlay.getPosition()),
-          state.lastPointer,
+          state.startOverlayPoint,
+          state.startPointer,
           currentPointer,
         );
         const position = projection.coordsFromContainerPoint(
           new sdk.maps.Point(point.x, point.y),
         );
-        state.lastPointer = currentPointer;
         overlay.setPosition(position);
       };
 
@@ -1990,10 +1989,13 @@ function KakaoRouteMap({
         if (endpointMovePending || dragState) return;
         const startPointer = { x: event.clientX, y: event.clientY };
         const mapWasDraggable = map.getDraggable();
+        const startOverlayPoint = map
+          .getProjection()
+          .containerPointFromCoords(overlay.getPosition());
         dragState = {
           pointerId: event.pointerId,
           startPointer,
-          lastPointer: startPointer,
+          startOverlayPoint,
           moved: false,
           mapWasDraggable,
         };

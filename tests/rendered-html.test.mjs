@@ -741,9 +741,13 @@ test("drags only the start and destination pins and recommits the route", async 
   assert.match(kakaoMapSource, /map\.setDraggable\(state\.mapWasDraggable\)/);
   assert.match(
     kakaoMapSource,
-    /projection\.containerPointFromCoords\(overlay\.getPosition\(\)\)/,
+    /const startOverlayPoint = map\s*\.getProjection\(\)\s*\.containerPointFromCoords\(overlay\.getPosition\(\)\)/,
   );
-  assert.match(kakaoMapSource, /getDraggedOverlayPoint\(/);
+  assert.match(
+    kakaoMapSource,
+    /getDraggedOverlayPoint\(\s*state\.startOverlayPoint,\s*state\.startPointer,\s*currentPointer,\s*\)/,
+  );
+  assert.doesNotMatch(kakaoMapSource, /lastPointer/);
   assert.match(
     kakaoMapSource,
     /\.coordsFromContainerPoint\(\s*new sdk\.maps\.Point\(point\.x, point\.y\),?\s*\)/,
