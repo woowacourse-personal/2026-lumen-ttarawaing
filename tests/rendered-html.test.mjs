@@ -1184,20 +1184,35 @@ test("centers each route time label under its proportional segment", async () =>
   );
   const walkToBarRule =
     styles.match(/\.mode-walk-one\s*\{([^}]+)\}/)?.[1] ?? "";
+  const segmentBarRule =
+    styles.match(/\.mode-segment-bar\s*\{([^}]+)\}/)?.[1] ?? "";
+  const walkCapsuleRule =
+    styles.match(
+      /\.mode-walk-one,\s*\.mode-walk-two\s*\{([^}]+)\}/,
+    )?.[1] ?? "";
   const bikeBarRule =
     styles.match(/\.mode-bike\s*\{([^}]+)\}/)?.[1] ?? "";
   const walkFromBarRule =
     styles.match(/\.mode-walk-two\s*\{([^}]+)\}/)?.[1] ?? "";
-  assert.match(walkToBarRule, /repeating-linear-gradient/);
-  assert.match(walkToBarRule, /var\(--blue\)/);
-  assert.match(walkToBarRule, /transparent/);
+  assert.match(segmentBarRule, /height:\s*7px/);
+  assert.match(segmentBarRule, /overflow:\s*hidden/);
+  assert.match(segmentBarRule, /border-radius:\s*999px/);
+  assert.match(walkToBarRule, /--mode-walk-color:\s*var\(--blue\)/);
+  assert.match(walkFromBarRule, /--mode-walk-color:\s*var\(--coral\)/);
+  assert.equal(
+    walkCapsuleRule.match(/radial-gradient/g)?.length,
+    2,
+  );
+  assert.match(walkCapsuleRule, /circle at 3\.5px 50%/);
+  assert.match(walkCapsuleRule, /circle at 8\.5px 50%/);
+  assert.match(walkCapsuleRule, /linear-gradient/);
+  assert.match(walkCapsuleRule, /18px 7px repeat-x/);
+  assert.match(walkCapsuleRule, /var\(--mode-walk-color\)/);
+  assert.doesNotMatch(walkCapsuleRule, /repeating-linear-gradient/);
   assert.match(bikeBarRule, /radial-gradient/);
   assert.match(bikeBarRule, /rgba\(255,\s*255,\s*255,\s*0\.96\)/);
   assert.match(bikeBarRule, /var\(--green\)/);
   assert.match(bikeBarRule, /repeat-x/);
-  assert.match(walkFromBarRule, /repeating-linear-gradient/);
-  assert.match(walkFromBarRule, /var\(--coral\)/);
-  assert.match(walkFromBarRule, /transparent/);
   assert.equal(
     pageSource.match(/mode-segment-bar[^"]*" aria-hidden="true"/g)?.length,
     3,
