@@ -664,17 +664,15 @@ test("focuses and zooms the map when a route pin is activated", async () => {
   );
   assert.match(kakaoSource, /document\.createElement\("button"\)/);
   assert.match(kakaoSource, /wrapper\.type = "button"/);
-  assert.match(
-    kakaoSource,
-    /wrapper\.setAttribute\("aria-label", `\$\{tooltip\} 지도 핀으로 이동`\)/,
-  );
+  assert.match(kakaoSource, /`\$\{tooltip\} 지도 핀으로 이동`/);
+  assert.match(kakaoSource, /`\$\{tooltip\} 핀\. 드래그해서 위치 변경`/);
   assert.match(
     kakaoSource,
     /wrapper\.addEventListener\("click", \(event\) => \{[\s\S]*?event\.stopPropagation\(\);[\s\S]*?onFocusMarker\(coordinates\);/,
   );
   assert.match(
     kakaoSource,
-    /sdk\.maps\.event\.addListener\(marker, "click", \(\) => \{[\s\S]*?marker\.getPosition\(\);[\s\S]*?onFocusMarker\(\[position\.getLat\(\), position\.getLng\(\)\]\);/,
+    /sdk\.maps\.event\.addListener\(dragMarker, "click", \(\) => \{[\s\S]*?dragMarker\.getPosition\(\);[\s\S]*?onFocusMarker\(\[position\.getLat\(\), position\.getLng\(\)\]\);/,
   );
   assert.match(
     kakaoSource,
@@ -717,13 +715,19 @@ test("drags only the start and destination pins and recommits the route", async 
   assert.match(leafletMapSource, /onEndpointMove\(endpoint,/);
   assert.match(kakaoMapSource, /new sdk\.maps\.Marker\(\{/);
   assert.match(kakaoMapSource, /draggable:\s*true/);
+  assert.match(kakaoMapSource, /opacity:\s*0\.01/);
+  assert.match(kakaoMapSource, /wrapper\.classList\.add\("is-draggable-visual"\)/);
   assert.match(
     kakaoMapSource,
-    /sdk\.maps\.event\.addListener\(marker, "dragstart", onEndpointDragStart\)/,
+    /sdk\.maps\.event\.addListener\(dragMarker, "drag", \(\) => \{[\s\S]*?overlay\.setPosition\(dragMarker\.getPosition\(\)\);/,
   );
   assert.match(
     kakaoMapSource,
-    /sdk\.maps\.event\.addListener\(marker, "dragend", \(\) => \{/,
+    /dragMarker,\s*"dragstart",\s*onEndpointDragStart/,
+  );
+  assert.match(
+    kakaoMapSource,
+    /sdk\.maps\.event\.addListener\(dragMarker, "dragend", \(\) => \{/,
   );
   assert.equal(
     (pageSource.match(/plan\.origin\.name,\s*"origin"/g) ?? []).length,
@@ -740,6 +744,10 @@ test("drags only the start and destination pins and recommits the route", async 
   assert.match(pageSource, /expandMobileDetails:\s*false/);
   assert.match(kakaoSource, /coord2Address\(longitude, latitude/);
   assert.match(styles, /\.leaflet-marker-draggable\s*\{[^}]*cursor:\s*grab/s);
+  assert.match(
+    styles,
+    /\.kakao-route-marker\.is-draggable-visual\s*\{[^}]*pointer-events:\s*none/s,
+  );
 });
 
 test("focuses the map when each route timeline place is selected", async () => {

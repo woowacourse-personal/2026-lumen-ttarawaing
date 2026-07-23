@@ -1507,6 +1507,10 @@ input:focus-visible {
   -webkit-tap-highlight-color: transparent;
 }
 
+.kakao-route-marker.is-draggable-visual {
+  pointer-events: none;
+}
+
 .route-marker-wrapper:focus-visible {
   outline: 3px solid rgba(0, 167, 123, 0.34);
   outline-offset: 2px;

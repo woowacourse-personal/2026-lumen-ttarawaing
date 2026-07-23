@@ -1900,48 +1900,19 @@ function KakaoRouteMap({
       tooltip: string,
       endpoint?: RouteEndpointKind,
     ) => {
-      if (endpoint) {
-        const markerImage = createKakaoEndpointMarkerImage(
-          sdk,
-          label,
-          endpoint === "origin" ? "#3b5ccc" : "#ed6a4a",
-          `${tooltip} 핀`,
-        );
-        const marker = new sdk.maps.Marker({
-          map,
-          position: toLatLng(coordinates),
-          ...(markerImage ? { image: markerImage } : {}),
-          title: `${tooltip} 핀. 드래그해서 위치 변경`,
-          draggable: true,
-          clickable: true,
-          zIndex: 5,
-        });
-        sdk.maps.event.addListener(marker, "click", () => {
-          const position = marker.getPosition();
-          onFocusMarker([position.getLat(), position.getLng()]);
-        });
-        sdk.maps.event.addListener(marker, "dragstart", onEndpointDragStart);
-        sdk.maps.event.addListener(marker, "dragend", () => {
-          marker.setDraggable(false);
-          const position = marker.getPosition();
-          void onEndpointMove(endpoint, [
-            position.getLat(),
-            position.getLng(),
-          ]).then((accepted) => {
-            if (!active) return;
-            if (!accepted) marker.setPosition(toLatLng(coordinates));
-            marker.setDraggable(true);
-          });
-        });
-        mapObjectsRef.current.push(marker);
-        return;
-      }
-
       const wrapper = document.createElement("button");
       wrapper.type = "button";
       wrapper.className = `route-marker-wrapper kakao-route-marker ${className}-wrapper`;
-      wrapper.title = tooltip;
-      wrapper.setAttribute("aria-label", `${tooltip} 지도 핀으로 이동`);
+      if (endpoint) wrapper.classList.add("is-draggable-visual");
+      wrapper.title = endpoint
+        ? `${tooltip} 핀. 드래그해서 위치 변경`
+        : tooltip;
+      wrapper.setAttribute(
+        "aria-label",
+        endpoint
+          ? `${tooltip} 핀. 드래그해서 위치 변경`
+          : `${tooltip} 지도 핀으로 이동`,
+      );
       wrapper.addEventListener("click", (event) => {
         event.stopPropagation();
         onFocusMarker(coordinates);
@@ -1956,9 +1927,10 @@ function KakaoRouteMap({
       markerShape.appendChild(markerLabel);
       marker.appendChild(markerShape);
       wrapper.appendChild(marker);
+      const markerPosition = toLatLng(coordinates);
       const overlay = new sdk.maps.CustomOverlay({
         map,
-        position: toLatLng(coordinates),
+        position: markerPosition,
         content: wrapper,
         clickable: true,
         xAnchor: 0.5,
@@ -1966,6 +1938,53 @@ function KakaoRouteMap({
         zIndex: 4,
       });
       mapObjectsRef.current.push(overlay);
+
+      if (!endpoint) return;
+      const markerImage = createKakaoEndpointMarkerImage(
+        sdk,
+        label,
+        endpoint === "origin" ? "#3b5ccc" : "#ed6a4a",
+        `${tooltip} 핀`,
+      );
+      const dragMarker = new sdk.maps.Marker({
+        map,
+        position: markerPosition,
+        ...(markerImage ? { image: markerImage } : {}),
+        title: `${tooltip} 핀. 드래그해서 위치 변경`,
+        draggable: true,
+        clickable: true,
+        opacity: 0.01,
+        zIndex: 5,
+      });
+      sdk.maps.event.addListener(dragMarker, "click", () => {
+        const position = dragMarker.getPosition();
+        onFocusMarker([position.getLat(), position.getLng()]);
+      });
+      sdk.maps.event.addListener(
+        dragMarker,
+        "dragstart",
+        onEndpointDragStart,
+      );
+      sdk.maps.event.addListener(dragMarker, "drag", () => {
+        overlay.setPosition(dragMarker.getPosition());
+      });
+      sdk.maps.event.addListener(dragMarker, "dragend", () => {
+        dragMarker.setDraggable(false);
+        const position = dragMarker.getPosition();
+        overlay.setPosition(position);
+        void onEndpointMove(endpoint, [
+          position.getLat(),
+          position.getLng(),
+        ]).then((accepted) => {
+          if (!active) return;
+          if (!accepted) {
+            dragMarker.setPosition(markerPosition);
+            overlay.setPosition(markerPosition);
+          }
+          dragMarker.setDraggable(true);
+        });
+      });
+      mapObjectsRef.current.push(dragMarker);
     };
 
     const walkTo = geometry.walkTo.path;
