@@ -5,6 +5,7 @@ import {
   consumeLocationFocusRequest,
   getRotatingMapCanvasSide,
   relayoutPreservingMapCenter,
+  shouldPrepareHeadingMapTouch,
   updateMapPinchActive,
   unwrapMapHeading,
 } from "../app/map-location-camera.ts";
@@ -76,6 +77,15 @@ test("핀치 상태는 두 손가락부터 시작하고 모든 손가락을 뗄 
   assert.equal(updateMapPinchActive(true, 0), false);
   assert.equal(updateMapPinchActive(false, Number.NaN), false);
   assert.equal(updateMapPinchActive(false, -1), false);
+});
+
+test("방향 보기 지도는 SDK가 첫 터치 좌표를 기록하기 전에 준비한다", () => {
+  assert.equal(shouldPrepareHeadingMapTouch(true, 1), true);
+  assert.equal(shouldPrepareHeadingMapTouch(true, 2), true);
+  assert.equal(shouldPrepareHeadingMapTouch(false, 1), false);
+  assert.equal(shouldPrepareHeadingMapTouch(true, 0), false);
+  assert.equal(shouldPrepareHeadingMapTouch(true, Number.NaN), false);
+  assert.equal(shouldPrepareHeadingMapTouch(true, -1), false);
 });
 
 test("지도 컨테이너를 다시 배치해도 기존 지리적 중심을 복원한다", () => {

@@ -73,6 +73,17 @@ export function updateMapPinchActive(
   return previousActive;
 }
 
+export function shouldPrepareHeadingMapTouch(
+  headingUp: boolean,
+  touchCount: number,
+) {
+  return (
+    headingUp &&
+    Number.isFinite(touchCount) &&
+    touchCount >= 1
+  );
+}
+
 export function relayoutPreservingMapCenter<TCenter>(
   map: CenterPreservingMap<TCenter>,
 ) {

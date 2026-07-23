@@ -1042,39 +1042,53 @@ test("minimizes mobile details on map drag without animating the handle", async 
   assert.match(pageSource, /new ResizeObserver\(scheduleLayout\)/);
 });
 
-test("exits heading-up before native pinch zoom consumes its target", async () => {
+test("exits heading-up before native touch consumes its drag origin", async () => {
   const pageSource = await readFile(
     new URL("../app/page.tsx", import.meta.url),
     "utf8",
   );
-  const pinchHook =
+  const touchHook =
     pageSource.match(
-      /function useHeadingAwareMapPinchStart\([\s\S]*?\n}\n\nfunction useHeadingUpMapCanvas/,
+      /function useHeadingAwareMapTouchStart\([\s\S]*?\n}\n\nfunction useHeadingUpMapCanvas/,
     )?.[0] ?? "";
 
-  assert.match(pinchHook, /const viewport = node\?\.parentElement/);
-  assert.match(pinchHook, /event\.touches\.length/);
-  assert.match(pinchHook, /const pinchStarted = !pinchActiveRef\.current && nextActive/);
-  assert.match(pinchHook, /node\.dataset\.headingUp !== "true"/);
+  assert.match(touchHook, /const viewport = node\?\.parentElement/);
+  assert.match(touchHook, /node\.contains\(target\)/);
+  assert.match(touchHook, /event\.touches\.length/);
   assert.match(
-    pinchHook,
-    /runHeadingAwareMapInteractionStart\(node, onMapPinchStart\)/,
+    touchHook,
+    /shouldPrepareHeadingMapTouch\(\s*node\.dataset\.headingUp === "true",\s*event\.touches\.length,\s*\)/,
   );
   assert.match(
-    pinchHook,
+    touchHook,
+    /runHeadingAwareMapInteractionStart\(node, onMapTouchStart\)/,
+  );
+  assert.match(
+    touchHook,
     /viewport\.addEventListener\("touchstart", handleTouchStart, \{\s*capture: true,\s*passive: true,\s*\}\)/,
   );
   assert.match(
-    pinchHook,
+    touchHook,
     /viewport\.removeEventListener\("touchstart", handleTouchStart, true\)/,
   );
-  assert.match(pinchHook, /touchend/);
-  assert.match(pinchHook, /touchcancel/);
-  assert.match(pinchHook, /event\.touches\.length[\s\S]*?return/);
-  assert.doesNotMatch(pinchHook, /preventDefault/);
+  assert.match(touchHook, /touchend/);
+  assert.match(touchHook, /touchcancel/);
+  assert.doesNotMatch(touchHook, /preventDefault/);
+  const touchStartHandler =
+    touchHook.match(
+      /const handleTouchStart = \(event: TouchEvent\) => \{([\s\S]*?)\n    \};/,
+    )?.[1] ?? "";
+  assert.match(
+    touchStartHandler,
+    /runHeadingAwareMapInteractionStart\(node, onMapTouchStart\)/,
+  );
+  assert.doesNotMatch(
+    touchStartHandler,
+    /requestAnimationFrame|setTimeout|Promise/,
+  );
   assert.ok(
     (
-      pageSource.match(/useHeadingAwareMapPinchStart\(\{/g) ?? []
+      pageSource.match(/useHeadingAwareMapTouchStart\(\{/g) ?? []
     ).length >= 2,
   );
   assert.ok(
@@ -1082,7 +1096,8 @@ test("exits heading-up before native pinch zoom consumes its target", async () =
       pageSource.match(/if \(pinchActiveRef\.current\) return/g) ?? []
     ).length >= 2,
   );
-  assert.match(pageSource, /onMapPinchStart=\{leaveMapHeadingMode\}/);
+  assert.match(pageSource, /onMapTouchStart=\{leaveMapHeadingMode\}/);
+  assert.doesNotMatch(pageSource, /onMapTouchStart=\{handleMapDragStart\}/);
 
   const leaveHeadingHandler =
     pageSource.match(
@@ -1098,7 +1113,9 @@ test("exits heading-up before native pinch zoom consumes its target", async () =
   assert.match(leaveHeadingHandler, /setMapDeviceHeading\(null\)/);
   assert.doesNotMatch(leaveHeadingHandler, /minimizeMobileDetailsFromMapDrag/);
   assert.doesNotMatch(leaveHeadingHandler, /stopMapLocationTracking/);
+  assert.doesNotMatch(leaveHeadingHandler, /clearWatch/);
   assert.doesNotMatch(leaveHeadingHandler, /setMapUserLocation/);
+  assert.doesNotMatch(leaveHeadingHandler, /setMapTravelHeading/);
 });
 
 test("keeps the mobile heading-up camera centered through map relayout", async () => {

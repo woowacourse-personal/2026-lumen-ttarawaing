@@ -81,6 +81,7 @@ import {
   consumeLocationFocusRequest,
   getRotatingMapCanvasSide,
   relayoutPreservingMapCenter,
+  shouldPrepareHeadingMapTouch,
   updateMapPinchActive,
   unwrapMapHeading,
 } from "./map-location-camera";
@@ -662,14 +663,14 @@ function runHeadingAwareMapInteractionStart(
   });
 }
 
-function useHeadingAwareMapPinchStart({
+function useHeadingAwareMapTouchStart({
   nodeRef,
   ready,
-  onMapPinchStart,
+  onMapTouchStart,
 }: {
   nodeRef: RefObject<HTMLDivElement | null>;
   ready: boolean;
-  onMapPinchStart: () => void;
+  onMapTouchStart: () => void;
 }) {
   const pinchActiveRef = useRef(false);
 
@@ -691,10 +692,16 @@ function useHeadingAwareMapPinchStart({
         pinchActiveRef.current,
         event.touches.length,
       );
-      const pinchStarted = !pinchActiveRef.current && nextActive;
       pinchActiveRef.current = nextActive;
-      if (!pinchStarted || node.dataset.headingUp !== "true") return;
-      runHeadingAwareMapInteractionStart(node, onMapPinchStart);
+      if (
+        !shouldPrepareHeadingMapTouch(
+          node.dataset.headingUp === "true",
+          event.touches.length,
+        )
+      ) {
+        return;
+      }
+      runHeadingAwareMapInteractionStart(node, onMapTouchStart);
     };
     const handleTouchFinish = (event: TouchEvent) => {
       if (
@@ -731,7 +738,7 @@ function useHeadingAwareMapPinchStart({
       window.cancelAnimationFrame(releaseAnimationFrame);
       pinchActiveRef.current = false;
     };
-  }, [nodeRef, onMapPinchStart, ready]);
+  }, [nodeRef, onMapTouchStart, ready]);
 
   return pinchActiveRef;
 }
@@ -1289,7 +1296,7 @@ function LeafletRouteMap({
   onFocusNextTarget,
   onFocusMarker,
   onMapDragStart,
-  onMapPinchStart,
+  onMapTouchStart,
   onEndpointDragStart,
   onEndpointMove,
 }: {
@@ -1310,7 +1317,7 @@ function LeafletRouteMap({
   onFocusNextTarget: () => void;
   onFocusMarker: (coordinates: Coordinates) => void;
   onMapDragStart: () => void;
-  onMapPinchStart: () => void;
+  onMapTouchStart: () => void;
   onEndpointDragStart: () => void;
   onEndpointMove: RouteEndpointMoveHandler;
 }) {
@@ -1346,10 +1353,10 @@ function LeafletRouteMap({
     ready,
     onRelayout: relayoutMapForHeading,
   });
-  const pinchActiveRef = useHeadingAwareMapPinchStart({
+  const pinchActiveRef = useHeadingAwareMapTouchStart({
     nodeRef,
     ready,
-    onMapPinchStart,
+    onMapTouchStart,
   });
 
   useEffect(() => {
@@ -1760,7 +1767,7 @@ function KakaoRouteMap({
   onFocusNextTarget,
   onFocusMarker,
   onMapDragStart,
-  onMapPinchStart,
+  onMapTouchStart,
   onEndpointDragStart,
   onEndpointMove,
   onError,
@@ -1782,7 +1789,7 @@ function KakaoRouteMap({
   onFocusNextTarget: () => void;
   onFocusMarker: (coordinates: Coordinates) => void;
   onMapDragStart: () => void;
-  onMapPinchStart: () => void;
+  onMapTouchStart: () => void;
   onEndpointDragStart: () => void;
   onEndpointMove: RouteEndpointMoveHandler;
   onError: () => void;
@@ -1821,10 +1828,10 @@ function KakaoRouteMap({
     ready,
     onRelayout: relayoutMapForHeading,
   });
-  const pinchActiveRef = useHeadingAwareMapPinchStart({
+  const pinchActiveRef = useHeadingAwareMapTouchStart({
     nodeRef,
     ready,
-    onMapPinchStart,
+    onMapTouchStart,
   });
 
   useEffect(() => {
@@ -2397,7 +2404,7 @@ function RouteMap({
   onFocusNextTarget,
   onFocusMarker,
   onMapDragStart,
-  onMapPinchStart,
+  onMapTouchStart,
   onEndpointDragStart,
   onEndpointMove,
 }: {
@@ -2418,7 +2425,7 @@ function RouteMap({
   onFocusNextTarget: () => void;
   onFocusMarker: (coordinates: Coordinates) => void;
   onMapDragStart: () => void;
-  onMapPinchStart: () => void;
+  onMapTouchStart: () => void;
   onEndpointDragStart: () => void;
   onEndpointMove: RouteEndpointMoveHandler;
 }) {
@@ -2459,7 +2466,7 @@ function RouteMap({
         onFocusNextTarget={onFocusNextTarget}
         onFocusMarker={onFocusMarker}
         onMapDragStart={onMapDragStart}
-        onMapPinchStart={onMapPinchStart}
+        onMapTouchStart={onMapTouchStart}
         onEndpointDragStart={onEndpointDragStart}
         onEndpointMove={onEndpointMove}
         onError={useLeafletFallback}
@@ -2486,7 +2493,7 @@ function RouteMap({
         onFocusNextTarget={onFocusNextTarget}
         onFocusMarker={onFocusMarker}
         onMapDragStart={onMapDragStart}
-        onMapPinchStart={onMapPinchStart}
+        onMapTouchStart={onMapTouchStart}
         onEndpointDragStart={onEndpointDragStart}
         onEndpointMove={onEndpointMove}
       />
@@ -4094,7 +4101,7 @@ export default function Home() {
               onFocusNextTarget={focusNextRouteTarget}
               onFocusMarker={focusMapCoordinates}
               onMapDragStart={handleMapDragStart}
-              onMapPinchStart={leaveMapHeadingMode}
+              onMapTouchStart={leaveMapHeadingMode}
               onEndpointDragStart={prepareRouteEndpointDrag}
               onEndpointMove={moveRouteEndpoint}
             />
