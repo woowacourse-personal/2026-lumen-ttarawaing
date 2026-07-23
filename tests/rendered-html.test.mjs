@@ -1182,6 +1182,26 @@ test("centers each route time label under its proportional segment", async () =>
     styles,
     /\.mode-segment-label\s*\{[^}]*justify-content:\s*center[^}]*white-space:\s*nowrap/s,
   );
+  const walkToBarRule =
+    styles.match(/\.mode-walk-one\s*\{([^}]+)\}/)?.[1] ?? "";
+  const bikeBarRule =
+    styles.match(/\.mode-bike\s*\{([^}]+)\}/)?.[1] ?? "";
+  const walkFromBarRule =
+    styles.match(/\.mode-walk-two\s*\{([^}]+)\}/)?.[1] ?? "";
+  assert.match(walkToBarRule, /repeating-linear-gradient/);
+  assert.match(walkToBarRule, /var\(--blue\)/);
+  assert.match(walkToBarRule, /transparent/);
+  assert.match(bikeBarRule, /radial-gradient/);
+  assert.match(bikeBarRule, /rgba\(255,\s*255,\s*255,\s*0\.96\)/);
+  assert.match(bikeBarRule, /var\(--green\)/);
+  assert.match(bikeBarRule, /repeat-x/);
+  assert.match(walkFromBarRule, /repeating-linear-gradient/);
+  assert.match(walkFromBarRule, /var\(--coral\)/);
+  assert.match(walkFromBarRule, /transparent/);
+  assert.equal(
+    pageSource.match(/mode-segment-bar[^"]*" aria-hidden="true"/g)?.length,
+    3,
+  );
   assert.match(
     pageSource,
     /const totalMinutes = walkToMinutes \+ bikeMinutes \+ walkFromMinutes;/,
